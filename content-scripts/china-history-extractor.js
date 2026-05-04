@@ -59,19 +59,18 @@
   }
 
   function createSaveButton(provider) {
-    const { text, tooltip } = window.LanguageDetector.getSaveButtonText(null);
     const button = document.createElement('button');
     button.id = 'insidebar-china-save-conversation';
     button.type = 'button';
-    button.title = `${tooltip} (${provider.name})`;
-    button.setAttribute('aria-label', `${text} ${provider.name}`);
+    button.title = `保存${provider.name}回答和参考资料`;
+    button.setAttribute('aria-label', `保存${provider.name}回答和参考资料`);
     button.innerHTML = `
       <span class="insidebar-china-save-icon" aria-hidden="true">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
           <path d="M12 3v11m0 0 4-4m-4 4-4-4M5 17v2a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-2" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
         </svg>
       </span>
-      <span>${text}</span>
+      <span>保存豆包回答</span>
     `;
     button.addEventListener('click', handleSaveClick);
     return button;
