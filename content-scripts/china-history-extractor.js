@@ -396,11 +396,13 @@
 
   function buildDoubaoNetworkCitationPreview(citations) {
     return citations.slice(0, 10).map(citation => ({
+      exportRank: citation.exportRank,
       title: citation.title,
       sourceName: citation.sourceName,
       domain: citation.domain,
       url: citation.url,
       rank: citation.visibleRank,
+      isDuplicateUrl: citation.isDuplicateUrl,
       sourcePanel: citation.sourcePanel
     }));
   }
@@ -954,10 +956,22 @@
     if (citation.sourcePanel !== 'doubao_same_message_search_result') return false;
 
     const answerMessageId = run?.rawEvidence?.answerMessageId || '';
-    if (!answerMessageId || citation.messageId !== answerMessageId) return false;
+    if (
+      answerMessageId &&
+      citation.messageId &&
+      citation.messageId !== answerMessageId
+    ) {
+      return false;
+    }
 
     const runConversationId = String(run?.rawEvidence?.conversationId || '');
-    if (!runConversationId || String(citation.conversationId || '') !== runConversationId) return false;
+    if (
+      runConversationId &&
+      citation.conversationId &&
+      String(citation.conversationId || '') !== runConversationId
+    ) {
+      return false;
+    }
 
     return true;
   }
@@ -1053,6 +1067,8 @@
       logoUrl: card.logo_url || '',
       position: rank,
       visibleRank: rank,
+      exportRank: fallbackIndex,
+      isDuplicateUrl: false,
       originalDocRank: card.original_doc_rank ?? '',
       publishTime: card.publish_time_second || '',
       docId: card.doc_id || '',
@@ -1069,6 +1085,47 @@
       conversationId: message?.conversation_id || '',
       messageId: message?.message_id || '',
       raw: card
+    };
+  }
+
+  function markDuplicateUrls(citations = []) {
+    const seen = new Set();
+    const normalized = [];
+
+    citations.forEach(citation => {
+      if (!citation?.url) return;
+
+      const url = normalizeDoubaoUrl(citation.url);
+      if (!url || isLikelyAssetUrl(url) || isLikelyInternalServiceUrl(url) || isPlatformAssetUrl(url)) return;
+
+      const isDuplicateUrl = seen.has(url);
+      seen.add(url);
+
+      normalized.push({
+        ...citation,
+        url,
+        domain: citation.domain || getDomain(url),
+        position: citation.position || normalized.length + 1,
+        visibleRank: citation.visibleRank || citation.position || normalized.length + 1,
+        exportRank: normalized.length + 1,
+        isDuplicateUrl
+      });
+    });
+
+    return normalized;
+  }
+
+  function getCitationCounts(citations = []) {
+    const raw = Array.isArray(citations) ? citations.filter(citation => citation?.url).length : 0;
+    const unique = new Set(
+      (Array.isArray(citations) ? citations : [])
+        .map(citation => citation?.url || '')
+        .filter(Boolean)
+    ).size;
+
+    return {
+      rawCitationCount: raw,
+      uniqueCitationCount: unique
     };
   }
 
@@ -1150,7 +1207,7 @@
       });
     });
 
-    return mergeDoubaoCitations(citations);
+    return markDuplicateUrls(citations);
   }
 
   async function revealDoubaoReferences() {
@@ -1488,15 +1545,18 @@
         if (!citation) return;
 
         citation.extractionMethod = 'router_data_search_result';
-        citations.push(citation);
+        citations.push({
+          ...citation,
+          exportRank: citations.length + 1
+        });
       });
     });
 
-    return citations;
+    return markDuplicateUrls(citations);
   }
 
   function extractCitationsFromAssistantMessage(message) {
-    return mergeDoubaoCitations(extractDoubaoSearchCitationsFromMessage(message));
+    return extractDoubaoSearchCitationsFromMessage(message);
   }
 
   function extractMediaSourcesFromAssistantMessage(message) {
@@ -1605,6 +1665,7 @@
     const query = getTextFromDoubaoBlocks(queryBlocks);
     const answerText = getTextFromDoubaoBlocks(answerBlocks);
     const citations = extractCitationsFromAssistantMessage(assistantMessage);
+    const citationCounts = getCitationCounts(citations);
     const runContext = getRunContextForQuery(query);
 
     if (!query) {
@@ -1638,6 +1699,8 @@
         userMessageId: userMessage?.message_id || '',
         answerMessageId: assistantMessage.message_id || '',
         citationCount: citations.length,
+        rawCitationCount: citationCounts.rawCitationCount,
+        uniqueCitationCount: citationCounts.uniqueCitationCount,
         networkUrl: assistantMessage.__networkUrl || '',
         capturedAt: assistantMessage.__capturedAt || '',
         runId: runContext?.runId || '',
@@ -1665,7 +1728,8 @@
     const conversationName = getDoubaoConversationNameFromRouterData(routerData);
     const searchCitations = extractDoubaoSearchCitationsFromMessage(assistantMessage);
     const mediaSources = extractMediaSourcesFromAssistantMessage(assistantMessage);
-    const citations = mergeDoubaoCitations(searchCitations);
+    const citations = markDuplicateUrls(searchCitations);
+    const citationCounts = getCitationCounts(citations);
     const runContext = getRunContextForQuery(query);
 
     return {
@@ -1696,6 +1760,8 @@
         userQuestion: query,
         conversationName,
         citationCount: citations.length,
+        rawCitationCount: citationCounts.rawCitationCount,
+        uniqueCitationCount: citationCounts.uniqueCitationCount,
         searchCitationCount: searchCitations.length,
         mediaSourceCount: mediaSources.length,
         runId: runContext?.runId || '',
@@ -1713,6 +1779,7 @@
   function refreshConversationSources(conversation, citations, source, runContext = null) {
     const networkCitations = citations.filter(citation => citation.extractionMethod?.startsWith('network_'));
     const networkDebug = getDoubaoNetworkDebugFields(runContext, Date.now(), networkCitations);
+    const citationCounts = getCitationCounts(citations);
     const sourcesMarkdown = citations.length > 0
       ? '\n\n### Sources\n' + citations.map((item, index) => `${index + 1}. [${item.title || item.domain}](${item.url})`).join('\n')
       : '';
@@ -1732,6 +1799,8 @@
       promptHash: runContext?.promptHash || conversation.rawEvidence?.promptHash || '',
       runStartedAt: runContext?.startedAt || conversation.rawEvidence?.runStartedAt || null,
       citationCount: citations.length,
+      rawCitationCount: citationCounts.rawCitationCount,
+      uniqueCitationCount: citationCounts.uniqueCitationCount,
       ...networkDebug
     };
     conversation.runId = runContext?.runId || conversation.runId || '';
@@ -1753,7 +1822,7 @@
     const runContext = getRunContextForQuery(query);
     const finishedAt = Date.now();
     const networkCitations = extractDoubaoCitationsFromNetworkResponses(runContext, finishedAt);
-    const citations = mergeDoubaoCitations([
+    const citations = markDuplicateUrls([
       ...networkCitations,
       ...extractVisibleReferenceItems(),
       ...extractCitationCards(answerRoot),
@@ -1761,6 +1830,7 @@
       ...extractDoubaoReferencePanelCitations(),
       ...extractPageWideCitations(answerRoot)
     ]);
+    const citationCounts = getCitationCounts(citations);
 
     if (!answerMarkdown && citations.length === 0) {
       throw new Error('No visible answer or sources found');
@@ -1805,6 +1875,8 @@
         runStartedAt: runContext?.startedAt || null,
         linkCount: citations.length,
         citationCount: citations.length,
+        rawCitationCount: citationCounts.rawCitationCount,
+        uniqueCitationCount: citationCounts.uniqueCitationCount,
         ...getDoubaoNetworkDebugFields(runContext, finishedAt, networkCitations),
         referencePanelCitationCount: citations.filter(citation => citation.sourcePanel === 'doubao_reference_panel').length,
         pageWideCitationCount: citations.filter(citation => citation.extractionMethod?.startsWith('page_')).length
@@ -2038,7 +2110,9 @@
       'provider',
       'query',
       'answer',
-      'citation_rank',
+      'export_rank',
+      'visible_rank',
+      'is_duplicate_url',
       'source_title',
       'source_name',
       'source_domain',
@@ -2051,7 +2125,9 @@
       'answer_message_id',
       'citation_message_id',
       'evidence_type',
-      'source_panel'
+      'source_panel',
+      'raw_citation_count',
+      'unique_citation_count'
     ];
     const rows = buildCitationCsvRows(conversation);
 
@@ -2063,16 +2139,23 @@
 
   function buildCitationCsvRows(run) {
     assertCurrentDoubaoRun(run);
-    const citations = (run.citations || [])
-      .filter(citation => isStrictCitation(citation, run));
+    const exportCitations = markDuplicateUrls(
+      (run.citations || []).filter(citation => isStrictCitation(citation, run))
+    );
+    const rawCitationCount = run.rawEvidence?.rawCitationCount || exportCitations.length;
+    const uniqueCitationCount = run.rawEvidence?.uniqueCitationCount || new Set(
+      exportCitations.map(citation => citation.url).filter(Boolean)
+    ).size;
 
-    if (citations.length === 0) {
+    if (exportCitations.length === 0) {
       return [{
         saved_at: new Date(run.timestamp || Date.now()).toISOString(),
         provider: run.provider,
         query: getExportQuery(run),
         answer: run.answerText || '',
-        citation_rank: '',
+        export_rank: '',
+        visible_rank: '',
+        is_duplicate_url: '',
         source_title: '',
         source_name: '',
         source_domain: '',
@@ -2085,16 +2168,20 @@
         answer_message_id: run.rawEvidence?.answerMessageId || '',
         citation_message_id: '',
         evidence_type: '',
-        source_panel: ''
+        source_panel: '',
+        raw_citation_count: rawCitationCount,
+        unique_citation_count: uniqueCitationCount
       }];
     }
 
-    return citations.map((citation, index) => ({
+    return exportCitations.map((citation, index) => ({
       saved_at: new Date(run.timestamp || Date.now()).toISOString(),
       provider: run.provider,
       query: getExportQuery(run),
       answer: run.answerText || '',
-      citation_rank: citation.visibleRank || citation.position || index + 1,
+      export_rank: index + 1,
+      visible_rank: citation.visibleRank || citation.position || index + 1,
+      is_duplicate_url: citation.isDuplicateUrl ? 'yes' : 'no',
       source_title: citation.title || '',
       source_name: citation.sourceName || '',
       source_domain: citation.domain || '',
@@ -2107,7 +2194,9 @@
       answer_message_id: run.rawEvidence?.answerMessageId || '',
       citation_message_id: citation.messageId || '',
       evidence_type: citation.evidenceType || '',
-      source_panel: citation.sourcePanel || ''
+      source_panel: citation.sourcePanel || '',
+      raw_citation_count: rawCitationCount,
+      unique_citation_count: uniqueCitationCount
     }));
   }
 
@@ -2157,8 +2246,12 @@
     const finishedAt = conversation.timestamp || Date.now();
     const networkCitations = extractDoubaoCitationsFromNetworkResponses(runContext, finishedAt);
     const networkDebug = getDoubaoNetworkDebugFields(runContext, finishedAt, networkCitations);
-    const exportCitations = (conversation.citations || [])
-      .filter(citation => isStrictCitation(citation, conversation));
+    const exportCitations = markDuplicateUrls(
+      (conversation.citations || []).filter(citation => isStrictCitation(citation, conversation))
+    );
+    const uniqueCitationCount = new Set(
+      exportCitations.map(citation => citation.url).filter(Boolean)
+    ).size;
     const filteredOutPreview = (conversation.citations || [])
       .filter(citation => !isStrictCitation(citation, conversation))
       .slice(0, 20)
@@ -2166,9 +2259,11 @@
         title: citation.title,
         url: citation.url,
         domain: citation.domain,
-        reason: isPlatformAssetUrl(citation.url) ? 'platform_asset' : 'not_strict_citation',
+        reason: getCitationDropReason(citation, conversation),
         evidenceType: citation.evidenceType,
-        sourcePanel: citation.sourcePanel
+        sourcePanel: citation.sourcePanel,
+        messageId: citation.messageId,
+        conversationId: citation.conversationId
       }));
     const networkResponses = doubaoNetworkResponses.map(response => ({
       url: response.url,
@@ -2194,16 +2289,22 @@
       citationCount: conversation.citations.length,
       exportQuery: getExportQuery(conversation),
       exportFilename: buildDoubaoCsvFilename(conversation),
+      rawCitationCount: conversation.citations?.length || 0,
       strictCitationCount: exportCitations.length,
-      strictCitationsPreview: exportCitations.slice(0, 10).map(citation => ({
-        rank: citation.visibleRank,
+      uniqueCitationCount,
+      citationsPreview: exportCitations.map((citation, index) => ({
+        exportRank: index + 1,
+        visibleRank: citation.visibleRank,
         title: citation.title,
         sourceName: citation.sourceName,
         domain: citation.domain,
         url: citation.url,
+        isDuplicateUrl: citation.isDuplicateUrl,
         evidenceType: citation.evidenceType,
         sourcePanel: citation.sourcePanel,
-        messageId: citation.messageId
+        messageId: citation.messageId,
+        searchId: citation.searchId,
+        docId: citation.docId
       })),
       filteredOutPreview,
       mediaSources: conversation.mediaSources || [],
@@ -2218,6 +2319,29 @@
       referenceTriggers,
       rawUrlCandidates
     }, null, 2);
+  }
+
+  function getCitationDropReason(citation, run) {
+    if (!citation?.url) return 'missing_url';
+    if (isPlatformAssetUrl(citation.url)) return 'platform_asset';
+    if (citation.evidenceType !== 'network_search_result') return 'wrong_evidence_type';
+    if (citation.sourcePanel !== 'doubao_same_message_search_result') return 'wrong_source_panel';
+
+    const answerMessageId = run?.rawEvidence?.answerMessageId || '';
+    if (answerMessageId && citation.messageId && citation.messageId !== answerMessageId) {
+      return 'different_message_id';
+    }
+
+    const runConversationId = String(run?.rawEvidence?.conversationId || '');
+    if (
+      runConversationId &&
+      citation.conversationId &&
+      String(citation.conversationId || '') !== runConversationId
+    ) {
+      return 'different_conversation_id';
+    }
+
+    return 'unknown';
   }
 
   function downloadTextFile(filename, content, mimeType) {

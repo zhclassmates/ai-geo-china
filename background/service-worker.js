@@ -495,7 +495,11 @@ async function handleSaveGeoRun(payload, sender) {
 async function handleAnalyzeGeoRun(payload) {
   try {
     const project = payload.project || await getDefaultGeoProject();
-    const citations = normalizeAndClassifyCitations(filterStrictDoubaoCitations(payload), project);
+    const rawStrictCitations = filterStrictDoubaoCitations(payload);
+    const citations = normalizeAndClassifyCitations(rawStrictCitations, project, {
+      dedupe: payload.provider !== 'doubao'
+    });
+    const citationCounts = getCitationCounts(citations);
     const answerText = payload.answerText || payload.answerMarkdown || extractAssistantAnswer(payload.messages) || payload.content || '';
     const query = payload.actualQuery ||
       payload.query ||
@@ -527,7 +531,9 @@ async function handleAnalyzeGeoRun(payload) {
         rawEvidence: {
           ...(payload.rawEvidence || {}),
           linkCount: payload.rawEvidence?.linkCount ?? citations.length,
-          citationCount: citations.length
+          citationCount: citations.length,
+          rawCitationCount: payload.rawEvidence?.rawCitationCount ?? citationCounts.rawCitationCount,
+          uniqueCitationCount: payload.rawEvidence?.uniqueCitationCount ?? citationCounts.uniqueCitationCount
         }
       }
     };
@@ -548,8 +554,8 @@ function filterStrictDoubaoCitations(payload = {}) {
     if (!citation?.url) return false;
     if (citation.evidenceType !== 'network_search_result') return false;
     if (citation.sourcePanel !== 'doubao_same_message_search_result') return false;
-    if (!answerMessageId || citation.messageId !== answerMessageId) return false;
-    if (!runConversationId || String(citation.conversationId || '') !== runConversationId) return false;
+    if (answerMessageId && citation.messageId && citation.messageId !== answerMessageId) return false;
+    if (runConversationId && citation.conversationId && String(citation.conversationId || '') !== runConversationId) return false;
     return !isPlatformAssetUrl(citation.url);
   });
 }
@@ -604,18 +610,40 @@ async function handleFetchCitationPage(payload) {
   }
 }
 
-function normalizeAndClassifyCitations(citations, project) {
+function normalizeAndClassifyCitations(citations, project, options = {}) {
   const seen = new Set();
+  const shouldDedupe = options.dedupe !== false;
 
   return citations
     .map((citation, index) => normalizeCitation(citation, index, project))
     .filter(Boolean)
     .filter(citation => {
+      if (!shouldDedupe) return true;
       if (seen.has(citation.url)) return false;
       seen.add(citation.url);
       return true;
     })
-    .map((citation, index) => ({ ...citation, position: index + 1 }));
+    .map((citation, index, normalizedCitations) => ({
+      ...citation,
+      position: citation.position || index + 1,
+      exportRank: index + 1,
+      isDuplicateUrl: normalizedCitations
+        .slice(0, index)
+        .some(previous => previous.url === citation.url)
+    }));
+}
+
+function getCitationCounts(citations = []) {
+  const rawCitationCount = Array.isArray(citations)
+    ? citations.filter(citation => citation?.url).length
+    : 0;
+  const uniqueCitationCount = new Set(
+    (Array.isArray(citations) ? citations : [])
+      .map(citation => citation?.url || '')
+      .filter(Boolean)
+  ).size;
+
+  return { rawCitationCount, uniqueCitationCount };
 }
 
 function normalizeCitation(citation, index, project) {
@@ -651,6 +679,8 @@ function normalizeCitation(citation, index, project) {
     snippet: sanitizeText(citation.snippet || '', 500),
     position: citation.position || index + 1,
     visibleRank: citation.visibleRank || citation.position || index + 1,
+    exportRank: citation.exportRank || index + 1,
+    isDuplicateUrl: Boolean(citation.isDuplicateUrl),
     originalDocRank: citation.originalDocRank ?? '',
     publishTime: citation.publishTime || '',
     docId: citation.docId || '',
