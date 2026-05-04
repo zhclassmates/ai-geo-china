@@ -1,9 +1,49 @@
 /* Save conversation button for ChatGPT pages */
 /* Button styling is handled by ChatGPT's native classes */
 
-#insidebar-save-conversation:disabled {
+#insidebar-save-conversation:disabled,
+#insidebar-export-markdown:disabled,
+#insidebar-export-json:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+/* Export button styles */
+#insidebar-export-markdown,
+#insidebar-export-json {
+  font-size: 13px;
+  font-weight: 500;
+  min-width: 72px;
+}
+
+#insidebar-chatgpt-export-toolbar {
+  position: fixed;
+  top: 12px;
+  right: 132px;
+  z-index: 10000;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px;
+  background: color-mix(in srgb, canvas 92%, transparent);
+  border: 1px solid color-mix(in srgb, currentColor 14%, transparent);
+  border-radius: 8px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+}
+
+#insidebar-chatgpt-export-toolbar button {
+  min-height: 34px;
+  padding: 6px 10px;
+  color: #111827;
+  background: #ffffff;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  font-size: 13px;
+  line-height: 1.2;
+}
+
+#insidebar-chatgpt-export-toolbar button:hover {
+  background: #f3f4f6;
 }
 
 /* Notification styles */

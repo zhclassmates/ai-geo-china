@@ -25,10 +25,12 @@
   let saveButton = null;
 
   // Initialize after page loads
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', init);
-  } else {
-    init();
+  if (!window.__INSIDEBAR_CHATGPT_EXTRACTOR_SKIP_AUTO_INIT__) {
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', init);
+    } else {
+      init();
+    }
   }
 
   function init() {
@@ -36,18 +38,20 @@
     console.log('[ChatGPT Extractor] In iframe?', window !== window.top);
     console.log('[ChatGPT Extractor] URL:', window.location.href);
 
-    // Only run on conversation pages (not homepage)
-    if (!window.location.href.startsWith('https://chatgpt.com/c/')) {
-      console.log('[ChatGPT Extractor] Not on conversation page, skipping');
-      return;
-    }
-
-    // Wait a bit for ChatGPT to fully render
+    // Wait a bit for ChatGPT to fully render. Keep observing because ChatGPT
+    // navigates between homepage and conversations without a full page reload.
     setTimeout(() => {
       console.log('[ChatGPT Extractor] Attempting to insert save button...');
       insertSaveButton();
       observeForShareButton();
     }, 2000);
+  }
+
+  function isChatGPTConversationPage() {
+    const host = window.location.hostname;
+    const isChatGPTHost = host === 'chatgpt.com' || host === 'chat.openai.com';
+
+    return isChatGPTHost && window.location.pathname.includes('/c/');
   }
 
   // Create save button matching ChatGPT's UI
@@ -76,25 +80,29 @@
   // Insert save button after share button
   function insertSaveButton() {
     // Only insert button on conversation pages
-    if (!window.location.href.startsWith('https://chatgpt.com/c/')) {
+    if (!isChatGPTConversationPage()) {
       console.log('[ChatGPT Extractor] Not a conversation page, skipping save button');
+      removeFallbackToolbar();
       return;
     }
 
     // Check if button already exists
-    if (document.getElementById('insidebar-save-conversation')) {
-      console.log('[ChatGPT Extractor] Save button already exists');
+    const existingSaveButton = document.getElementById('insidebar-save-conversation');
+
+    if (existingSaveButton) {
+      console.log('[ChatGPT Extractor] Save button already exists, ensuring export buttons');
+      ensureExportButtons(existingSaveButton);
       return;
     }
 
     // Find share button
-    const shareButton = document.querySelector('[data-testid="share-chat-button"]');
+    const shareButton = findShareButton();
 
     console.log('[ChatGPT Extractor] Looking for share button...');
     console.log('[ChatGPT Extractor] Share button found?', !!shareButton);
 
     if (!shareButton) {
-      console.log('[ChatGPT Extractor] Share button not found yet, will retry');
+      console.log('[ChatGPT Extractor] Share button not found, using fixed fallback toolbar');
       console.log('[ChatGPT Extractor] All buttons on page:',
         Array.from(document.querySelectorAll('button')).map(b => ({
           text: b.textContent.substring(0, 30),
@@ -102,6 +110,7 @@
           classes: b.className
         }))
       );
+      insertFallbackToolbar();
       return;
     }
 
@@ -110,15 +119,56 @@
     console.log('[ChatGPT Extractor] Has conversation?', hasConversation);
 
     if (!hasConversation) {
-      console.log('[ChatGPT Extractor] No conversation detected, skipping button insertion');
+      console.log('[ChatGPT Extractor] Conversation content not detected yet, using fixed fallback toolbar');
+      insertFallbackToolbar();
       return;
     }
 
     // Create and insert save button after share button
     saveButton = createSaveButton();
     shareButton.parentElement.insertBefore(saveButton, shareButton.nextSibling);
+    ensureExportButtons(saveButton);
 
-    console.log('[ChatGPT Extractor] Save button inserted after share button');
+    console.log('[ChatGPT Extractor] Save and export buttons inserted after share button');
+  }
+
+  function findShareButton() {
+    const directMatch = document.querySelector('[data-testid="share-chat-button"]');
+    if (directMatch) return directMatch;
+
+    const shareTexts = ['Share', '分享', '共有', 'Поделиться', 'Compartir', 'Partager', 'Teilen', 'Condividi', '공유'];
+
+    return Array.from(document.querySelectorAll('button')).find(button => {
+      const label = [
+        button.getAttribute('aria-label'),
+        button.getAttribute('title'),
+        button.textContent
+      ].filter(Boolean).join(' ').trim();
+
+      return label && shareTexts.some(text => label.includes(text));
+    }) || null;
+  }
+
+  function insertFallbackToolbar() {
+    if (!isChatGPTConversationPage()) {
+      removeFallbackToolbar();
+      return;
+    }
+
+    let toolbar = document.getElementById('insidebar-chatgpt-export-toolbar');
+
+    if (!toolbar) {
+      toolbar = document.createElement('div');
+      toolbar.id = 'insidebar-chatgpt-export-toolbar';
+      document.body.appendChild(toolbar);
+    }
+
+    if (!document.getElementById('insidebar-save-conversation')) {
+      saveButton = createSaveButton();
+      toolbar.appendChild(saveButton);
+    }
+
+    ensureExportButtons(document.getElementById('insidebar-save-conversation'));
   }
 
   // Detect if there's a conversation on the page
@@ -141,10 +191,11 @@
       // Try to insert button if it doesn't exist
       insertSaveButton();
 
-      // Remove button if conversation no longer exists
+      // Remove injected controls when navigating away from conversation pages.
       const existingButton = document.getElementById('insidebar-save-conversation');
-      if (existingButton && !detectConversation()) {
+      if (existingButton && !isChatGPTConversationPage()) {
         existingButton.remove();
+        removeFallbackToolbar();
         saveButton = null;
       }
     });
@@ -157,7 +208,7 @@
   }
 
   // Extract conversation title
-  function getConversationTitle() {
+  function getConversationTitle(messages = []) {
     // Priority 1: Extract conversation ID from URL and find matching sidebar link
     const urlMatch = window.location.pathname.match(/\/c\/([^\/]+)/);
 
@@ -241,19 +292,52 @@
       }
     }
 
-    // Ultimate fallback: Use default
+    // Ultimate fallback: generate a short local title from the first question.
+    const generatedTitle = generateTitleFromMessages(messages.length ? messages : getMessages());
+    if (generatedTitle) {
+      console.log('[ChatGPT Extractor] Generated title from conversation content:', generatedTitle);
+      return generatedTitle;
+    }
+
     console.log('[ChatGPT Extractor] No title found, using default');
     return 'Untitled Conversation';
+  }
+
+  function generateTitleFromMessages(messages) {
+    if (!Array.isArray(messages) || messages.length === 0) return '';
+
+    const sourceMessage =
+      messages.find(message => message.role === 'user' && message.content) ||
+      messages.find(message => message.content);
+
+    if (!sourceMessage) return '';
+
+    return summarizeTextAsTitle(sourceMessage.content);
+  }
+
+  function summarizeTextAsTitle(text) {
+    if (!text) return '';
+
+    const cleaned = text
+      .replace(/```[\s\S]*?```/g, ' ')
+      .replace(/`([^`]+)`/g, '$1')
+      .replace(/[#>*_\-[\]()]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+
+    if (!cleaned) return '';
+
+    const sentence = cleaned.split(/[。！？!?；;：:\n]/).find(part => part.trim()) || cleaned;
+    const title = sentence.trim().slice(0, 30).trim();
+
+    return title || '';
   }
 
   // Extract all messages from the conversation
   function getMessages() {
     const messages = [];
 
-    // Try multiple selectors for message containers
-    const messageContainers = document.querySelectorAll('[data-message-author-role]') ||
-                              document.querySelectorAll('[class*="group/conversation-turn"]') ||
-                              document.querySelectorAll('main [class*="flex"][class*="gap"]');
+    const messageContainers = getMessageContainers();
 
     messageContainers.forEach(container => {
       try {
@@ -269,6 +353,25 @@
     return messages;
   }
 
+  function getMessageContainers() {
+    const selectors = [
+      '[data-testid^="conversation-turn-"]',
+      '[class*="group/conversation-turn"]',
+      '[data-message-author-role]',
+      'main [class*="flex"][class*="gap"]'
+    ];
+
+    for (const selector of selectors) {
+      const containers = document.querySelectorAll(selector);
+      if (containers.length > 0) {
+        console.log('[ChatGPT Extractor] Message containers found via selector:', selector, containers.length);
+        return containers;
+      }
+    }
+
+    return [];
+  }
+
   // Extract a single message from its container
   function extractMessageFromContainer(container) {
     // Determine role (user or assistant)
@@ -278,32 +381,132 @@
     if (roleAttr) {
       role = roleAttr;
     } else {
+      const nestedRoleElement = container.querySelector('[data-message-author-role]');
+      const nestedRole = nestedRoleElement?.getAttribute('data-message-author-role');
+      if (nestedRole) {
+        role = nestedRole;
+      }
+
       // Try to detect based on structure/classes
       const classes = container.className;
-      if (classes.includes('user') || container.querySelector('[class*="user"]')) {
+      if (role === 'unknown' && (classes.includes('user') || container.querySelector('[class*="user"]'))) {
         role = 'user';
-      } else if (classes.includes('assistant') || container.querySelector('[class*="assistant"]')) {
+      } else if (role === 'unknown' && (classes.includes('assistant') || container.querySelector('[class*="assistant"]'))) {
         role = 'assistant';
+      }
+
+      if (role === 'unknown') {
+        if (container.querySelector('[class*="markdown"]')) {
+          role = 'assistant';
+        } else if (container.querySelector('[class*="whitespace-pre-wrap"]') || container.querySelector('[class*="whitespace"]')) {
+          role = 'user';
+        }
       }
     }
 
     // Get message content
-    const contentElement = container.querySelector('[class*="markdown"]') ||
-                          container.querySelector('[data-message-id]') ||
-                          container.querySelector('div[class*="whitespace"]') ||
-                          container;
+    const contentElement = findMessageContentElement(container, role);
 
     if (!contentElement) return null;
 
     // Extract text content, preserving code blocks
     const content = extractContentWithFormatting(contentElement);
+    const sources = role === 'assistant'
+      ? extractSourcesFromElement(contentElement, container)
+      : [];
 
     if (!content.trim()) return null;
 
     return {
       role,
-      content: content.trim()
+      content: content.trim(),
+      sources
     };
+  }
+
+  function extractSourcesFromElement(contentElement, container) {
+    const sourceRoot = container || contentElement;
+    const links = Array.from(sourceRoot.querySelectorAll('a[href]'));
+    const seen = new Set();
+    const sources = [];
+
+    links.forEach(link => {
+      const source = normalizeSourceLink(link);
+      if (!source || seen.has(source.url)) return;
+
+      seen.add(source.url);
+      sources.push(source);
+    });
+
+    return sources;
+  }
+
+  function normalizeSourceLink(link) {
+    const rawHref = link.getAttribute('href');
+    if (!rawHref || rawHref.startsWith('#')) return null;
+
+    let url;
+    try {
+      url = new URL(rawHref, window.location.href);
+    } catch (error) {
+      return null;
+    }
+
+    if (!['http:', 'https:'].includes(url.protocol)) return null;
+
+    const currentUrl = new URL(window.location.href);
+    if (url.origin === currentUrl.origin && url.pathname === currentUrl.pathname) {
+      return null;
+    }
+
+    const title = [
+      link.textContent,
+      link.getAttribute('aria-label'),
+      link.getAttribute('title'),
+      url.hostname
+    ].find(value => value && value.trim())?.trim();
+
+    return {
+      title: sanitizeSourceTitle(title || url.hostname),
+      url: url.href
+    };
+  }
+
+  function sanitizeSourceTitle(title) {
+    return title
+      .replace(/\s+/g, ' ')
+      .replace(/^\[\d+\]\s*/, '')
+      .trim()
+      .slice(0, 120);
+  }
+
+  function findMessageContentElement(container, role) {
+    const roleRoot = container.matches?.('[data-message-author-role]')
+      ? container
+      : container.querySelector(`[data-message-author-role="${role}"]`);
+
+    if (role === 'user') {
+      return roleRoot?.querySelector('[class*="whitespace-pre-wrap"]') ||
+        roleRoot?.querySelector('[class*="whitespace"]') ||
+        container.querySelector('[class*="whitespace-pre-wrap"]') ||
+        container.querySelector('[class*="whitespace"]') ||
+        roleRoot ||
+        container;
+    }
+
+    if (role === 'assistant') {
+      return roleRoot?.querySelector('[class*="markdown"]') ||
+        container.querySelector('[class*="markdown"]') ||
+        roleRoot?.querySelector('[data-message-id]') ||
+        container.querySelector('[data-message-id]') ||
+        roleRoot ||
+        container;
+    }
+
+    return container.querySelector('[class*="markdown"]') ||
+      container.querySelector('[class*="whitespace-pre-wrap"]') ||
+      container.querySelector('[data-message-id]') ||
+      container;
   }
 
   // Extract content while preserving markdown formatting
@@ -319,8 +522,8 @@
   // Extract full conversation data
   function extractConversation() {
     try {
-      const title = getConversationTitle();
       const messages = getMessages();
+      const title = getConversationTitle(messages);
 
       if (!messages || messages.length === 0) {
         throw new Error('No messages found in conversation');
@@ -340,6 +543,358 @@
       console.error('[ChatGPT Extractor] Error extracting conversation:', error);
       throw error;
     }
+  }
+
+  // Export the current ChatGPT conversation directly from the page.
+  function sleep(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
+  }
+
+  function sanitizeFilename(name) {
+    return (name || 'chatgpt-conversation')
+      .replace(/[<>:"/\\|?*\x00-\x1F]/g, '_')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .slice(0, 100);
+  }
+
+  function getBestScrollElement() {
+    const candidates = [
+      document.querySelector('main [class*="react-scroll-to-bottom"]'),
+      document.querySelector('main'),
+      document.scrollingElement,
+      document.documentElement,
+      document.body
+    ].filter(Boolean);
+
+    return candidates.find(el => {
+      return el.scrollHeight && el.clientHeight && el.scrollHeight > el.clientHeight + 100;
+    }) || document.scrollingElement || document.documentElement;
+  }
+
+  function setScrollTop(el, top) {
+    if (
+      el === document.scrollingElement ||
+      el === document.documentElement ||
+      el === document.body
+    ) {
+      window.scrollTo(0, top);
+    } else {
+      el.scrollTop = top;
+    }
+  }
+
+  function getScrollHeight(el) {
+    if (
+      el === document.scrollingElement ||
+      el === document.documentElement ||
+      el === document.body
+    ) {
+      return Math.max(
+        document.body.scrollHeight,
+        document.documentElement.scrollHeight
+      );
+    }
+
+    return el.scrollHeight;
+  }
+
+  function getClientHeight(el) {
+    if (
+      el === document.scrollingElement ||
+      el === document.documentElement ||
+      el === document.body
+    ) {
+      return window.innerHeight;
+    }
+
+    return el.clientHeight;
+  }
+
+  function messageKey(message) {
+    return [
+      message.role,
+      message.content.length,
+      message.content.slice(0, 120),
+      message.content.slice(-120)
+    ].join('::');
+  }
+
+  async function collectMessagesAcrossScroll() {
+    const scrollEl = getBestScrollElement();
+    const totalHeight = getScrollHeight(scrollEl);
+    const viewportHeight = getClientHeight(scrollEl);
+    const step = Math.max(500, Math.floor(viewportHeight * 0.75));
+
+    const seen = new Set();
+    const collected = [];
+
+    for (let y = 0; y <= totalHeight + step; y += step) {
+      setScrollTop(scrollEl, Math.min(y, totalHeight));
+      await sleep(350);
+
+      const batch = getMessages();
+
+      for (const message of batch) {
+        if (!message || !message.content) continue;
+
+        const key = messageKey(message);
+
+        if (!seen.has(key)) {
+          seen.add(key);
+          collected.push(message);
+        }
+      }
+    }
+
+    setScrollTop(scrollEl, totalHeight);
+
+    return collected.length > 0 ? collected : getMessages();
+  }
+
+  async function extractConversationForExport() {
+    const messages = await collectMessagesAcrossScroll();
+
+    if (!messages || messages.length === 0) {
+      throw new Error('No messages found in conversation');
+    }
+
+    const title = getConversationTitle(messages);
+    const content = formatMessagesAsText(messages);
+
+    return {
+      title,
+      content,
+      messages,
+      message_count: messages.length,
+      timestamp: Date.now(),
+      exported_at: new Date().toISOString(),
+      url: window.location.href,
+      provider: 'ChatGPT',
+      exporter: 'insidebar-ai-custom-local-exporter'
+    };
+  }
+
+  function conversationToMarkdown(conversation) {
+    const lines = [];
+    const turns = buildConversationTurns(conversation.messages || []);
+
+    lines.push(`# ${conversation.title || 'Untitled Conversation'}`);
+    lines.push('');
+    lines.push(`- Provider: ${conversation.provider || 'ChatGPT'}`);
+    lines.push(`- Source URL: ${conversation.url || window.location.href}`);
+    lines.push(`- Exported At: ${conversation.exported_at || new Date().toISOString()}`);
+    lines.push(`- Message Count: ${conversation.message_count || conversation.messages.length}`);
+    lines.push('');
+    lines.push('---');
+    lines.push('');
+
+    if (turns.length > 0) {
+      turns.forEach((turn, index) => {
+        lines.push(`## 第 ${index + 1} 轮`);
+        lines.push('');
+
+        if (turn.question) {
+          lines.push('### 问');
+          lines.push('');
+          lines.push(turn.question);
+          lines.push('');
+        }
+
+        if (turn.answer) {
+          lines.push('### 答');
+          lines.push('');
+          lines.push(turn.answer);
+          lines.push('');
+        }
+
+        if (turn.sources.length > 0) {
+          lines.push('### 参考来源');
+          lines.push('');
+          turn.sources.forEach((source, sourceIndex) => {
+            lines.push(`${sourceIndex + 1}. [${source.title}](${source.url})`);
+          });
+          lines.push('');
+        }
+      });
+
+      return lines.join('\n');
+    }
+
+    conversation.messages.forEach((message, index) => {
+      const roleLabel = message.role === 'assistant' ? 'ChatGPT' : message.role || 'Unknown';
+
+      lines.push(`## ${index + 1}. ${roleLabel}`);
+      lines.push('');
+      lines.push(message.content || '');
+      lines.push('');
+    });
+
+    return lines.join('\n');
+  }
+
+  function buildConversationTurns(messages) {
+    const turns = [];
+    let currentTurn = null;
+
+    messages.forEach(message => {
+      if (!message || !message.content) return;
+
+      if (message.role === 'user') {
+        currentTurn = {
+          question: message.content,
+          answer: '',
+          sources: []
+        };
+        turns.push(currentTurn);
+        return;
+      }
+
+      if (message.role === 'assistant') {
+        if (!currentTurn) {
+          currentTurn = {
+            question: '',
+            answer: '',
+            sources: []
+          };
+          turns.push(currentTurn);
+        }
+
+        currentTurn.answer = currentTurn.answer
+          ? `${currentTurn.answer}\n\n${message.content}`
+          : message.content;
+        currentTurn.sources = mergeSources(currentTurn.sources, message.sources || []);
+      }
+    });
+
+    return turns.filter(turn => turn.question || turn.answer);
+  }
+
+  function mergeSources(existingSources, newSources) {
+    const merged = [...existingSources];
+    const seen = new Set(merged.map(source => source.url));
+
+    newSources.forEach(source => {
+      if (!source || !source.url || seen.has(source.url)) return;
+
+      seen.add(source.url);
+      merged.push(source);
+    });
+
+    return merged;
+  }
+
+  function downloadTextFile(filename, content, mimeType) {
+    const blob = new Blob([content], {
+      type: `${mimeType};charset=utf-8`
+    });
+
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+
+    a.href = url;
+    a.download = filename;
+    a.style.display = 'none';
+
+    document.body.appendChild(a);
+    a.click();
+
+    setTimeout(() => {
+      URL.revokeObjectURL(url);
+      a.remove();
+    }, 1000);
+  }
+
+  async function handleExportClick(e, format) {
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+
+    try {
+      showNotification(`Exporting ${format.toUpperCase()}... Long conversations may take a few seconds.`, 'info');
+
+      const conversation = await extractConversationForExport();
+      const date = new Date().toISOString().slice(0, 10);
+      const baseName = `${sanitizeFilename(conversation.title)}-${date}`;
+
+      if (format === 'json') {
+        downloadTextFile(
+          `${baseName}.json`,
+          JSON.stringify(conversation, null, 2),
+          'application/json'
+        );
+
+        showNotification('JSON downloaded', 'success');
+        return;
+      }
+
+      const markdown = conversationToMarkdown(conversation);
+
+      downloadTextFile(
+        `${baseName}.md`,
+        markdown,
+        'text/markdown'
+      );
+
+      showNotification('Markdown downloaded', 'success');
+    } catch (error) {
+      console.error('[ChatGPT Exporter] Export failed:', error);
+      showNotification('Export failed: ' + error.message, 'error');
+    }
+  }
+
+  function createExportButton(format) {
+    const button = document.createElement('button');
+
+    button.id = format === 'json'
+      ? 'insidebar-export-json'
+      : 'insidebar-export-markdown';
+
+    button.className = 'btn relative btn-ghost text-token-text-primary mx-2';
+    button.title = format === 'json'
+      ? 'Download this conversation as JSON'
+      : 'Download this conversation as Markdown';
+    button.setAttribute('aria-label', button.title);
+
+    const label = document.createElement('div');
+    label.className = 'flex w-full items-center justify-center gap-1.5';
+    label.textContent = format === 'json' ? '下载JSON' : '下载MD';
+    button.appendChild(label);
+
+    button.addEventListener('click', (e) => handleExportClick(e, format));
+
+    return button;
+  }
+
+  function ensureExportButtons(anchorButton) {
+    if (!anchorButton || !anchorButton.parentElement) return;
+
+    let lastButton = anchorButton;
+
+    if (!document.getElementById('insidebar-export-markdown')) {
+      const mdButton = createExportButton('md');
+      lastButton.after(mdButton);
+      lastButton = mdButton;
+    } else {
+      lastButton = document.getElementById('insidebar-export-markdown');
+    }
+
+    if (!document.getElementById('insidebar-export-json')) {
+      const jsonButton = createExportButton('json');
+      lastButton.after(jsonButton);
+    }
+  }
+
+  function removeExportButtons() {
+    document.getElementById('insidebar-export-markdown')?.remove();
+    document.getElementById('insidebar-export-json')?.remove();
+  }
+
+  function removeFallbackToolbar() {
+    removeExportButtons();
+    const toolbar = document.getElementById('insidebar-chatgpt-export-toolbar');
+    toolbar?.remove();
   }
 
   // Handle save button click
@@ -455,6 +1010,17 @@
   }
 
   // Setup keyboard shortcut (Ctrl+Shift+S or Cmd+Shift+S)
+  if (window.__INSIDEBAR_CHATGPT_EXTRACTOR_TEST__) {
+    window.__InsidebarChatGPTExtractorTest = {
+      conversationToMarkdown,
+      extractConversationForExport,
+      getMessages,
+      getMessageContainers,
+      handleExportClick,
+      insertSaveButton
+    };
+  }
+
   setupKeyboardShortcut(handleSaveClick, detectConversation);
 
 })();
