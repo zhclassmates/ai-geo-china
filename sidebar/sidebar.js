@@ -2,6 +2,10 @@ import { PROVIDERS, getProviderById, getProviderByIdWithSettings, getEnabledProv
 import { applyTheme } from '../modules/theme-manager.js';
 import { t, translatePage, initializeLanguage } from '../modules/i18n.js';
 import {
+  formatGeoRunAsMarkdown,
+  buildGeoRunMarkdownFilename
+} from '../modules/markdown-exporter.js';
+import {
   getAllPrompts,
   savePrompt,
   updatePrompt,
@@ -28,7 +32,8 @@ import {
   getAllConversationTags,
   generateAutoTitle,
   findConversationByConversationId,
-  getAllGeoRuns
+  getAllGeoRuns,
+  getGeoCitationsByRun
 } from '../modules/history-manager.js';
 
 let currentProvider = null;
@@ -47,6 +52,7 @@ const EDGE_SHORTCUT_STORAGE_KEY = 'edgeShortcutReminderDismissed';
 let isShowingHistoryFavorites = false;
 let currentEditingConversationId = null;
 let currentViewingConversationId = null;
+let currentMarkdownFilename = '';
 
 // Helper function to detect if dark theme is currently active
 function isDarkTheme() {
@@ -804,6 +810,38 @@ function setupGeoDashboard() {
   if (refreshBtn) {
     refreshBtn.addEventListener('click', renderGeoDashboard);
   }
+
+  const listContainer = document.getElementById('geo-run-list');
+  if (listContainer) {
+    listContainer.addEventListener('click', async event => {
+      const exportButton = event.target.closest('.geo-export-md-btn');
+      const editButton = event.target.closest('.geo-edit-md-btn');
+
+      if (!exportButton && !editButton) return;
+
+      const runId = Number((exportButton || editButton).dataset.id);
+      if (!runId) return;
+
+      if (exportButton) {
+        await exportRunAsMarkdown(runId);
+      } else {
+        await openMarkdownEditor(runId);
+      }
+    });
+  }
+
+  document.getElementById('close-geo-markdown-modal')?.addEventListener('click', closeMarkdownEditor);
+  document.getElementById('geo-markdown-cancel-btn')?.addEventListener('click', closeMarkdownEditor);
+  document.getElementById('geo-markdown-save-btn')?.addEventListener('click', async () => {
+    try {
+      const editor = document.getElementById('geo-markdown-editor');
+      await saveMarkdownWithFilePicker(currentMarkdownFilename || 'doubao-geo-run.md', editor.value);
+      closeMarkdownEditor();
+    } catch (error) {
+      console.error('Error saving Markdown:', error);
+      showToast('Failed to save Markdown');
+    }
+  });
 }
 
 async function renderGeoDashboard() {
@@ -851,6 +889,10 @@ async function renderGeoDashboard() {
           <span class="geo-run-date">${escapeHtml(createdAt)}</span>
         </div>
         <div class="geo-run-query">${escapeHtml(run.query || 'Untitled GEO run')}</div>
+        <div class="geo-run-actions">
+          <button class="geo-export-md-btn" data-id="${escapeHtml(String(run.id))}" title="导出 Markdown"><span class="material-symbols-outlined">download</span><span>MD</span></button>
+          <button class="geo-edit-md-btn" data-id="${escapeHtml(String(run.id))}" title="编辑 Markdown"><span class="material-symbols-outlined">edit</span><span>编辑</span></button>
+        </div>
         <div class="geo-badges">
           <span class="geo-badge ${run.scores?.targetMentioned ? 'good' : 'bad'}">Mention ${run.scores?.targetMentioned ? 'yes' : 'no'}</span>
           <span class="geo-badge ${run.scores?.targetCited ? 'good' : 'bad'}">Citation ${run.scores?.targetCited ? 'yes' : 'no'}</span>
@@ -904,6 +946,100 @@ function updateGeoSummary(runs) {
   document.getElementById('geo-mention-rate').textContent = formatPercent(totalRuns ? mentionRuns / totalRuns : 0);
   document.getElementById('geo-citation-rate').textContent = formatPercent(totalRuns ? citationRuns / totalRuns : 0);
   document.getElementById('geo-share-voice').textContent = formatPercent(averageVoice);
+}
+
+async function getGeoRunWithCitations(runId) {
+  const runs = await getAllGeoRuns();
+  const run = runs.find(item => Number(item.id) === Number(runId));
+  if (!run) {
+    throw new Error('GEO run not found');
+  }
+
+  let citations = Array.isArray(run.citations) ? run.citations : [];
+  if (citations.length === 0) {
+    citations = await getGeoCitationsByRun(run.id);
+  }
+
+  return { ...run, citations };
+}
+
+async function exportRunAsMarkdown(runId) {
+  try {
+    const run = await getGeoRunWithCitations(runId);
+    const markdown = formatGeoRunAsMarkdown(run, run.citations || []);
+    const filename = buildGeoRunMarkdownFilename(run);
+    await downloadMarkdownFile(filename, markdown);
+    showToast('Markdown exported');
+  } catch (error) {
+    console.error('Error exporting Markdown:', error);
+    showToast('Failed to export Markdown');
+  }
+}
+
+async function openMarkdownEditor(runId) {
+  try {
+    const run = await getGeoRunWithCitations(runId);
+    currentMarkdownFilename = buildGeoRunMarkdownFilename(run);
+    document.getElementById('geo-markdown-editor').value = formatGeoRunAsMarkdown(run, run.citations || []);
+    document.getElementById('geo-markdown-modal').style.display = 'flex';
+  } catch (error) {
+    console.error('Error opening Markdown editor:', error);
+    showToast('Failed to open Markdown editor');
+  }
+}
+
+function closeMarkdownEditor() {
+  document.getElementById('geo-markdown-modal').style.display = 'none';
+  document.getElementById('geo-markdown-editor').value = '';
+  currentMarkdownFilename = '';
+}
+
+async function downloadMarkdownFile(filename, markdown) {
+  const blob = new Blob([markdown], {
+    type: 'text/markdown;charset=utf-8'
+  });
+  const url = URL.createObjectURL(blob);
+
+  try {
+    if (chrome.downloads?.download) {
+      await chrome.downloads.download({
+        url,
+        filename: `ai-geo-china/${filename}`,
+        saveAs: true
+      });
+    } else {
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = filename;
+      link.click();
+    }
+  } finally {
+    setTimeout(() => URL.revokeObjectURL(url), 3000);
+  }
+}
+
+async function saveMarkdownWithFilePicker(filename, markdown) {
+  if (!window.showSaveFilePicker) {
+    await downloadMarkdownFile(filename, markdown);
+    return;
+  }
+
+  const handle = await window.showSaveFilePicker({
+    suggestedName: filename,
+    types: [
+      {
+        description: 'Markdown 文件',
+        accept: {
+          'text/markdown': ['.md']
+        }
+      }
+    ]
+  });
+
+  const writable = await handle.createWritable();
+  await writable.write(markdown);
+  await writable.close();
+  showToast('Markdown saved');
 }
 
 function formatPercent(value) {

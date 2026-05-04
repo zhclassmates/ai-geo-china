@@ -296,6 +296,12 @@
     if (/(amazon|shopify|etsy|ebay|taobao|tmall|jd\.com|marketplace)/.test(haystack)) {
       return 'marketplace';
     }
+    if (/(phb123|maigoo|排行榜|榜单|top\s?\d+|top-|十大|排名|排行)/.test(haystack)) {
+      return 'ranking';
+    }
+    if (/(douyin|tiktok|xiaohongshu|bilibili|weibo|抖音|小红书|微博|视频号)/.test(haystack)) {
+      return 'social';
+    }
     if (/(review|reviews|best-|top-|compare|comparison|评测|测评|排行|榜单|对比)/.test(haystack)) {
       return 'review';
     }

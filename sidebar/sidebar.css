@@ -292,6 +292,35 @@ body {
   line-height: 1.4;
 }
 
+.geo-run-actions {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.geo-run-actions button {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 30px;
+  padding: 0 9px;
+  border: 1px solid #d7dce2;
+  border-radius: 6px;
+  background: #ffffff;
+  color: #344054;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.geo-run-actions button:hover {
+  background: #f8fafc;
+  border-color: #b8c0cc;
+}
+
+.geo-run-actions .material-symbols-outlined {
+  font-size: 16px;
+}
+
 .geo-badges,
 .geo-chip-row {
   display: flex;
@@ -364,6 +393,24 @@ body {
   color: #344054;
 }
 
+.geo-markdown-modal-content {
+  width: min(880px, 92vw);
+  height: min(760px, 88vh);
+}
+
+#geo-markdown-editor {
+  width: 100%;
+  height: 58vh;
+  min-height: 360px;
+  resize: vertical;
+  border: 1px solid #d7dce2;
+  border-radius: 6px;
+  padding: 12px;
+  font: 13px/1.5 Menlo, Monaco, Consolas, "Courier New", monospace;
+  color: #1f2937;
+  background: #ffffff;
+}
+
 /* Dark theme */
 [data-theme="dark"] {
   background: #1e1e1e;
@@ -418,6 +465,7 @@ body {
 }
 
 [data-theme="dark"] #geo-refresh-btn,
+[data-theme="dark"] .geo-run-actions button,
 [data-theme="dark"] .geo-stat {
   background: #2a2a2a;
   border-color: #444;
@@ -443,6 +491,17 @@ body {
 [data-theme="dark"] .geo-source,
 [data-theme="dark"] .geo-diagnostic {
   border-top-color: #333;
+}
+
+[data-theme="dark"] .geo-run-actions button:hover {
+  background: #333;
+  border-color: #555;
+}
+
+[data-theme="dark"] #geo-markdown-editor {
+  background: #242424;
+  border-color: #444;
+  color: #e0e0e0;
 }
 
 /* Dark theme icons - invert to make dark icons appear light */

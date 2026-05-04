@@ -169,6 +169,54 @@
     return document.querySelector('main') || document.body;
   }
 
+  function findDoubaoReferencePanel() {
+    const candidates = Array.from(document.querySelectorAll('aside, section, div[role="dialog"], div'));
+
+    return candidates
+      .filter(isVisibleElement)
+      .find(element => {
+        const text = (element.innerText || element.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 300);
+        const linkCount = element.querySelectorAll('a[href]').length;
+
+        return /参考资料|引用来源|资料来源|来源/.test(text) && linkCount > 0;
+      }) || null;
+  }
+
+  function extractSnippetFromCitationElement(anchor) {
+    if (!anchor) return '';
+
+    const card = anchor.closest('article, li, section, [role="article"], [class*="card"], [class*="source"], [class*="reference"], div');
+    const text = (card?.innerText || card?.textContent || anchor.innerText || anchor.textContent || '')
+      .replace(/\s+/g, ' ')
+      .trim();
+
+    return text.slice(0, 260);
+  }
+
+  function extractDoubaoReferencePanelCitations() {
+    const panel = findDoubaoReferencePanel();
+    if (!panel) return [];
+
+    const panelLinks = extractExternalLinks(panel);
+    const anchors = Array.from(panel.querySelectorAll('a[href]'));
+
+    return panelLinks.map((item, index) => {
+      const anchor = anchors.find(candidate => {
+        const href = candidate.href || candidate.getAttribute('href') || '';
+        return href && (href === item.url || href.includes(item.domain) || item.url.includes(href));
+      }) || anchors[index];
+
+      return {
+        ...item,
+        position: index + 1,
+        visibleRank: index + 1,
+        visibleWeight: Number((1 / (index + 1)).toFixed(4)),
+        sourcePanel: 'doubao_reference_panel',
+        snippet: extractSnippetFromCitationElement(anchor)
+      };
+    });
+  }
+
   function extractConversation(provider) {
     const answerRoot = extractAnswerRoot();
     const answerMarkdown = extractMarkdownFromElement(answerRoot).trim();
@@ -177,7 +225,8 @@
     const query = product;
     const citations = dedupeCitations([
       ...extractCitationCards(answerRoot),
-      ...extractExternalLinks(answerRoot)
+      ...extractExternalLinks(answerRoot),
+      ...extractDoubaoReferencePanelCitations()
     ]);
 
     if (!answerMarkdown && citations.length === 0) {
@@ -213,9 +262,12 @@
       timestamp: Date.now(),
       url: window.location.href,
       rawEvidence: {
-        extractionStrategy: 'generic_china_visible_dom',
+        pageTitle: document.title,
+        source: 'doubao_dom',
+        extractionStrategy: 'doubao_visible_dom_and_reference_panel',
         linkCount: citations.length,
-        citationCount: citations.length
+        citationCount: citations.length,
+        referencePanelCitationCount: citations.filter(citation => citation.sourcePanel === 'doubao_reference_panel').length
       }
     };
   }
@@ -270,7 +322,10 @@
       });
     } catch (error) {
       setSaveButtonBusy(false);
-      showNotification('Failed to extract conversation: ' + error.message, 'error');
+      const message = error.message && error.message.includes('Extension context invalidated')
+        ? 'Extension was reloaded. Please reload this Doubao page and save again.'
+        : 'Failed to extract conversation: ' + error.message;
+      showNotification(message, 'error');
     }
   }
 

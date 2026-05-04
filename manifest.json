@@ -11,7 +11,8 @@
     "contextMenus",
     "declarativeNetRequest",
     "declarativeNetRequestWithHostAccess",
-    "clipboardRead"
+    "clipboardRead",
+    "downloads"
   ],
 
   "host_permissions": [
