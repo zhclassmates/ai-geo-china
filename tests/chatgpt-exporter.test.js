@@ -227,6 +227,58 @@ describe('ChatGPT Markdown exporter', () => {
     ]);
   });
 
+  it('merges reference sources when the same message is collected again after links render', async () => {
+    const api = loadChatGPTExtractor();
+    let downloadedBlob;
+    let renderSources = false;
+
+    vi.spyOn(URL, 'createObjectURL').mockImplementation(blob => {
+      downloadedBlob = blob;
+      return 'blob:insidebar-test';
+    });
+    vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {});
+    vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
+    vi.spyOn(window, 'scrollTo').mockImplementation(() => {
+      renderSources = true;
+      document.body.innerHTML = `
+        <main>
+          <article data-message-author-role="user">
+            <div class="whitespace-pre-wrap">引用会不会丢？</div>
+          </article>
+          <article data-message-author-role="assistant">
+            <div class="markdown">
+              <p>不会丢。</p>
+              ${renderSources ? '<a href="https://example.com/source">来源</a>' : ''}
+            </div>
+          </article>
+        </main>
+      `;
+    });
+
+    document.body.innerHTML = `
+      <main>
+        <article data-message-author-role="user">
+          <div class="whitespace-pre-wrap">引用会不会丢？</div>
+        </article>
+        <article data-message-author-role="assistant">
+          <div class="markdown"><p>不会丢。</p></div>
+        </article>
+      </main>
+    `;
+
+    await api.handleExportClick({ preventDefault() {}, stopPropagation() {} }, 'json');
+
+    const json = JSON.parse(await downloadedBlob.text());
+
+    expect(json.messages[1].content).toContain('不会丢');
+    expect(json.messages[1].sources).toEqual([
+      {
+        title: '来源',
+        url: 'https://example.com/source'
+      }
+    ]);
+  });
+
   it('inserts export buttons in a fallback toolbar when ChatGPT has no share button', () => {
     const api = loadChatGPTExtractor();
 

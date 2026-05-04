@@ -627,6 +627,7 @@
     const step = Math.max(500, Math.floor(viewportHeight * 0.75));
 
     const seen = new Set();
+    const collectedByKey = new Map();
     const collected = [];
 
     for (let y = 0; y <= totalHeight + step; y += step) {
@@ -642,7 +643,10 @@
 
         if (!seen.has(key)) {
           seen.add(key);
+          collectedByKey.set(key, message);
           collected.push(message);
+        } else {
+          mergeMessageMetadata(collectedByKey.get(key), message);
         }
       }
     }
@@ -650,6 +654,14 @@
     setScrollTop(scrollEl, totalHeight);
 
     return collected.length > 0 ? collected : getMessages();
+  }
+
+  function mergeMessageMetadata(targetMessage, sourceMessage) {
+    if (!targetMessage || !sourceMessage) return;
+
+    if (sourceMessage.sources && sourceMessage.sources.length > 0) {
+      targetMessage.sources = mergeSources(targetMessage.sources || [], sourceMessage.sources);
+    }
   }
 
   async function extractConversationForExport() {
