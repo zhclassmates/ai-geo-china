@@ -100,6 +100,61 @@
         </div>
       </section>
 
+      <!-- GEO Project Settings -->
+      <section class="section">
+        <h2 class="section-title">GEO Project</h2>
+
+        <div class="setting-item vertical-setting">
+          <div class="setting-info">
+            <div class="setting-label">Brand name</div>
+            <div class="setting-description">The target brand/entity to detect in AI answers.</div>
+          </div>
+          <input type="text" id="geo-brand-name" class="full-width-input" placeholder="Your brand" />
+        </div>
+
+        <div class="setting-item vertical-setting">
+          <div class="setting-info">
+            <div class="setting-label">Target domains</div>
+            <div class="setting-description">Comma-separated official domains, without protocol.</div>
+          </div>
+          <input type="text" id="geo-domains" class="full-width-input" placeholder="yourdomain.com, sub.yourdomain.com" />
+        </div>
+
+        <div class="setting-item vertical-setting">
+          <div class="setting-info">
+            <div class="setting-label">Products</div>
+            <div class="setting-description">One product per line. Use aliases after a pipe: Product A | Alias 1, Alias 2</div>
+          </div>
+          <textarea id="geo-products" class="full-width-textarea" placeholder="Product A | Product A CN, Product A VN"></textarea>
+        </div>
+
+        <div class="setting-item vertical-setting">
+          <div class="setting-info">
+            <div class="setting-label">Competitors</div>
+            <div class="setting-description">One competitor per line: Name | domain.com | Alias 1, Alias 2</div>
+          </div>
+          <textarea id="geo-competitors" class="full-width-textarea" placeholder="Competitor A | competitor.com | Competitor Alias"></textarea>
+        </div>
+
+        <div class="setting-item vertical-setting">
+          <div class="setting-info">
+            <div class="setting-label">Markets</div>
+            <div class="setting-description">Comma-separated locale codes used for language gap diagnostics.</div>
+          </div>
+          <input type="text" id="geo-markets" class="full-width-input" placeholder="zh-CN, en-US, vi-VN" />
+        </div>
+
+        <div class="setting-item">
+          <div class="setting-info">
+            <div class="setting-label">Save GEO project</div>
+            <div class="setting-description">Used by Save GEO Run analysis for mentions, citations, competitors, and diagnostics.</div>
+          </div>
+          <div class="setting-control">
+            <button class="btn btn-primary" id="save-geo-project-btn">Save Project</button>
+          </div>
+        </div>
+      </section>
+
       <!-- Keyboard Settings -->
       <section class="section">
         <h2 class="section-title" data-i18n="sectionKeyboard">Keyboard</h2>

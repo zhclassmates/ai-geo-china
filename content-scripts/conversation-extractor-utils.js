@@ -152,6 +152,222 @@
   }
 
   // ============================================================================
+  // GEO Citation Extraction Functions
+  // ============================================================================
+
+  window.ConversationExtractorUtils.normalizeCitationUrl = function normalizeCitationUrl(rawUrl) {
+    if (!rawUrl || typeof rawUrl !== 'string') return '';
+
+    try {
+      const url = new URL(rawUrl, window.location.href);
+
+      if (!['http:', 'https:'].includes(url.protocol)) return '';
+
+      const blockedHosts = [
+        'chatgpt.com',
+        'chat.openai.com',
+        'claude.ai',
+        'gemini.google.com',
+        'grok.com',
+        'chat.deepseek.com',
+        'www.perplexity.ai',
+        'perplexity.ai',
+        'www.google.com',
+        'google.com'
+      ];
+      const hostname = url.hostname.replace(/^www\./, '');
+
+      if (blockedHosts.some(host => hostname === host.replace(/^www\./, ''))) {
+        const realTarget = url.searchParams.get('url') ||
+          url.searchParams.get('q') ||
+          url.searchParams.get('u');
+
+        if (realTarget && /^https?:\/\//i.test(realTarget)) {
+          return window.ConversationExtractorUtils.normalizeCitationUrl(realTarget);
+        }
+      }
+
+      ['utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content', 'utm_id', 'fbclid', 'gclid'].forEach(param => {
+        url.searchParams.delete(param);
+      });
+      url.hash = '';
+
+      return url.href;
+    } catch (error) {
+      return '';
+    }
+  };
+
+  window.ConversationExtractorUtils.isRealExternalUrl = function isRealExternalUrl(rawUrl) {
+    const normalizedUrl = window.ConversationExtractorUtils.normalizeCitationUrl(rawUrl);
+    if (!normalizedUrl) return false;
+
+    try {
+      const url = new URL(normalizedUrl);
+      const current = new URL(window.location.href);
+      const currentDomain = current.hostname.replace(/^www\./, '');
+      const targetDomain = url.hostname.replace(/^www\./, '');
+
+      if (targetDomain === currentDomain) return false;
+      if (['accounts.google.com', 'support.google.com'].includes(targetDomain)) return false;
+
+      return true;
+    } catch (error) {
+      return false;
+    }
+  };
+
+  window.ConversationExtractorUtils.extractExternalLinks = function extractExternalLinks(root = document) {
+    const anchors = Array.from(root.querySelectorAll('a[href]'));
+
+    return anchors
+      .map((anchor, index) => {
+        const url = window.ConversationExtractorUtils.normalizeCitationUrl(anchor.href || anchor.getAttribute('href'));
+        if (!url || !window.ConversationExtractorUtils.isRealExternalUrl(url)) return null;
+
+        let domain = '';
+        try {
+          domain = new URL(url).hostname.replace(/^www\./, '');
+        } catch (error) {
+          return null;
+        }
+
+        const anchorText = [
+          anchor.innerText,
+          anchor.textContent,
+          anchor.getAttribute('aria-label'),
+          anchor.getAttribute('title')
+        ].find(value => value && value.trim())?.replace(/\s+/g, ' ').trim() || domain;
+
+        const card = anchor.closest('article, [role="article"], [data-testid*="source"], [class*="source"], [class*="citation"], [class*="card"]');
+        const title = [
+          card?.querySelector('h1,h2,h3,h4')?.textContent,
+          anchor.getAttribute('aria-label'),
+          anchor.getAttribute('title'),
+          anchorText
+        ].find(value => value && value.trim())?.replace(/\s+/g, ' ').trim() || domain;
+
+        return {
+          url,
+          domain,
+          title: title.slice(0, 160),
+          anchorText: anchorText.slice(0, 240),
+          position: index + 1,
+          sourceType: window.ConversationExtractorUtils.classifySourceType(url, title, anchorText),
+          sourceRole: 'third_party',
+          isTargetDomain: false,
+          isCompetitorDomain: false
+        };
+      })
+      .filter(Boolean);
+  };
+
+  window.ConversationExtractorUtils.extractCitationCards = function extractCitationCards(root = document) {
+    const cardSelectors = [
+      '[data-testid*="source"]',
+      '[data-testid*="citation"]',
+      '[class*="source"]',
+      '[class*="citation"]',
+      '[aria-label*="Source"]',
+      '[aria-label*="source"]'
+    ];
+    const cards = Array.from(root.querySelectorAll(cardSelectors.join(',')));
+
+    return window.ConversationExtractorUtils.dedupeCitations(cards.flatMap(card => {
+      const links = window.ConversationExtractorUtils.extractExternalLinks(card);
+      const cardTitle = card.querySelector('h1,h2,h3,h4')?.textContent?.replace(/\s+/g, ' ').trim();
+
+      return links.map(link => ({
+        ...link,
+        title: cardTitle || link.title,
+        anchorText: link.anchorText || card.textContent?.replace(/\s+/g, ' ').trim().slice(0, 240) || link.domain
+      }));
+    }));
+  };
+
+  window.ConversationExtractorUtils.classifySourceType = function classifySourceType(url, title = '', text = '') {
+    let hostname = '';
+    try {
+      hostname = new URL(url).hostname.replace(/^www\./, '');
+    } catch (error) {
+      return 'unknown';
+    }
+
+    const haystack = `${hostname} ${title} ${text}`.toLowerCase();
+
+    if (/\.(edu|ac\.[a-z]{2})$/.test(hostname) || haystack.includes('university') || haystack.includes('大学')) {
+      return 'university';
+    }
+    if (/\.(gov|gov\.[a-z]{2})$/.test(hostname) || haystack.includes('government') || haystack.includes('政府')) {
+      return 'government';
+    }
+    if (/(reddit|quora|zhihu|stackexchange|forum|bbs|community)/.test(haystack)) {
+      return 'forum';
+    }
+    if (/(amazon|shopify|etsy|ebay|taobao|tmall|jd\.com|marketplace)/.test(haystack)) {
+      return 'marketplace';
+    }
+    if (/(review|reviews|best-|top-|compare|comparison|评测|测评|排行|榜单|对比)/.test(haystack)) {
+      return 'review';
+    }
+    if (/(news|media|press|magazine|journal|blog|times|post|资讯|新闻|媒体)/.test(haystack)) {
+      return 'media';
+    }
+
+    return 'official';
+  };
+
+  window.ConversationExtractorUtils.classifyCitation = function classifyCitation(citation, project = {}) {
+    if (!citation || !citation.domain) return citation;
+
+    const domain = citation.domain.replace(/^www\./, '').toLowerCase();
+    const targetDomains = Array.isArray(project.domains) ? project.domains : [];
+    const competitors = Array.isArray(project.competitors) ? project.competitors : [];
+
+    citation.isTargetDomain = targetDomains.some(targetDomain => {
+      const normalized = String(targetDomain).replace(/^www\./, '').toLowerCase();
+      return normalized && (domain === normalized || domain.endsWith(`.${normalized}`));
+    });
+
+    citation.isCompetitorDomain = competitors.some(competitor => {
+      const competitorDomains = Array.isArray(competitor.domains) ? competitor.domains : [];
+      return competitorDomains.some(competitorDomain => {
+        const normalized = String(competitorDomain).replace(/^www\./, '').toLowerCase();
+        return normalized && (domain === normalized || domain.endsWith(`.${normalized}`));
+      });
+    });
+
+    citation.sourceRole = citation.isTargetDomain
+      ? 'target'
+      : citation.isCompetitorDomain
+        ? 'competitor'
+        : 'third_party';
+
+    return citation;
+  };
+
+  window.ConversationExtractorUtils.dedupeCitations = function dedupeCitations(citations = []) {
+    const seen = new Set();
+    const deduped = [];
+
+    citations.forEach(citation => {
+      if (!citation || !citation.url) return;
+
+      const normalizedUrl = window.ConversationExtractorUtils.normalizeCitationUrl(citation.url);
+      if (!normalizedUrl || seen.has(normalizedUrl)) return;
+
+      seen.add(normalizedUrl);
+      deduped.push({
+        ...citation,
+        url: normalizedUrl,
+        position: deduped.length + 1
+      });
+    });
+
+    return deduped;
+  };
+
+  // ============================================================================
   // Message Formatting Functions
   // ============================================================================
 

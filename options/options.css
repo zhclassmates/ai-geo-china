@@ -157,6 +157,36 @@ header p {
   margin-left: 16px;
 }
 
+.vertical-setting {
+  display: block;
+}
+
+.vertical-setting .setting-info {
+  margin-bottom: 10px;
+}
+
+.full-width-input,
+.full-width-textarea {
+  width: 100%;
+  border: 1px solid #e0e0e0;
+  border-radius: 4px;
+  padding: 10px 12px;
+  font: inherit;
+  font-size: 14px;
+  background: #fff;
+}
+
+.full-width-textarea {
+  min-height: 92px;
+  resize: vertical;
+}
+
+.full-width-input:focus,
+.full-width-textarea:focus {
+  outline: none;
+  border-color: #1a73e8;
+}
+
 /* Legacy toggle-switch for backwards compatibility */
 .toggle-switch {
   position: relative;

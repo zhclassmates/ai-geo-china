@@ -125,6 +125,35 @@
       </div>
     </div>
 
+    <!-- GEO Dashboard UI -->
+    <div id="geo-dashboard" style="display: none;">
+      <div id="geo-dashboard-header">
+        <h2>GEO Dashboard</h2>
+        <button id="geo-refresh-btn" title="Refresh GEO runs"><span class="material-symbols-outlined">refresh</span></button>
+      </div>
+      <div id="geo-summary">
+        <div class="geo-stat">
+          <span class="geo-stat-value" id="geo-total-runs">0</span>
+          <span class="geo-stat-label">Runs</span>
+        </div>
+        <div class="geo-stat">
+          <span class="geo-stat-value" id="geo-mention-rate">0%</span>
+          <span class="geo-stat-label">Mention</span>
+        </div>
+        <div class="geo-stat">
+          <span class="geo-stat-value" id="geo-citation-rate">0%</span>
+          <span class="geo-stat-label">Citation</span>
+        </div>
+        <div class="geo-stat">
+          <span class="geo-stat-value" id="geo-share-voice">0%</span>
+          <span class="geo-stat-label">Voice</span>
+        </div>
+      </div>
+      <div id="geo-run-list">
+        <!-- GEO run cards will be dynamically rendered here -->
+      </div>
+    </div>
+
     <!-- T045: Prompt Genie UI -->
     <div id="prompt-library" style="display: none;">
       <!-- Workspace for editing received text - Always visible at top -->

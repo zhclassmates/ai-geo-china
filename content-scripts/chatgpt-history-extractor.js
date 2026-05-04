@@ -16,7 +16,11 @@
     checkForDuplicate,
     showDuplicateWarning,
     showNotification,
-    setupKeyboardShortcut
+    setupKeyboardShortcut,
+    extractExternalLinks,
+    extractCitationCards,
+    dedupeCitations,
+    normalizeCitationUrl
   } = window.ConversationExtractorUtils;
 
   // Share button selector for language detection
@@ -442,18 +446,10 @@
   }
 
   function normalizeSourceLink(link) {
-    const rawHref = link.getAttribute('href');
-    if (!rawHref || rawHref.startsWith('#')) return null;
+    const normalizedUrl = normalizeCitationUrl(link.getAttribute('href') || link.href);
+    if (!normalizedUrl) return null;
 
-    let url;
-    try {
-      url = new URL(rawHref, window.location.href);
-    } catch (error) {
-      return null;
-    }
-
-    if (!['http:', 'https:'].includes(url.protocol)) return null;
-
+    const url = new URL(normalizedUrl);
     const currentUrl = new URL(window.location.href);
     if (url.origin === currentUrl.origin && url.pathname === currentUrl.pathname) {
       return null;
@@ -468,7 +464,7 @@
 
     return {
       title: sanitizeSourceTitle(title || url.hostname),
-      url: url.href
+      url: normalizedUrl
     };
   }
 
@@ -530,11 +526,25 @@
       }
 
       const content = formatMessagesAsText(messages);
+      const citations = extractChatGPTCitations(messages);
+      const lastUserMessage = [...messages].reverse().find(message => message.role === 'user');
+      const assistantMessages = messages.filter(message => message.role === 'assistant');
+      const answerMarkdown = assistantMessages.map(message => message.content).join('\n\n');
 
       return {
         title,
         content,
         messages,
+        type: 'geo_run',
+        query: lastUserMessage?.content || title,
+        answerText: answerMarkdown,
+        answerMarkdown,
+        citations,
+        rawEvidence: {
+          visibleText: document.body.innerText?.slice(0, 5000) || '',
+          linkCount: document.querySelectorAll('a[href]').length,
+          sourcePanelDetected: Boolean(document.querySelector('[data-testid*="source"], [class*="source"], [aria-label*="Source"]'))
+        },
         timestamp: Date.now(),
         url: window.location.href,
         provider: 'ChatGPT'
@@ -543,6 +553,49 @@
       console.error('[ChatGPT Extractor] Error extracting conversation:', error);
       throw error;
     }
+  }
+
+  function extractChatGPTCitations(messages = []) {
+    const messageSources = messages
+      .filter(message => message.role === 'assistant')
+      .flatMap(message => message.sources || [])
+      .map((source, index) => {
+        const url = normalizeCitationUrl(source.url);
+        if (!url) return null;
+
+        let domain = '';
+        try {
+          domain = new URL(url).hostname.replace(/^www\./, '');
+        } catch (error) {
+          return null;
+        }
+
+        return {
+          url,
+          domain,
+          title: source.title || domain,
+          anchorText: source.title || domain,
+          position: index + 1,
+          sourceRole: 'third_party',
+          isTargetDomain: false,
+          isCompetitorDomain: false
+        };
+      })
+      .filter(Boolean);
+
+    return dedupeCitations([
+      ...messageSources,
+      ...extractInlineCitationLinks(),
+      ...extractCitationCards(document)
+    ]);
+  }
+
+  function extractInlineCitationLinks() {
+    const roots = getMessageContainers()
+      .map(container => container.querySelector('[class*="markdown"]') || container)
+      .filter(Boolean);
+
+    return dedupeCitations(roots.flatMap(root => extractExternalLinks(root)));
   }
 
   // Export the current ChatGPT conversation directly from the page.

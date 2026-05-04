@@ -1,5 +1,12 @@
 const DEFAULT_SETTINGS = {
-  enabledProviders: ['chatgpt', 'claude', 'gemini', 'grok', 'deepseek'],
+  enabledProviders: ['chatgpt', 'perplexity', 'claude', 'gemini', 'google', 'grok', 'deepseek'],
+  geoProject: {
+    brandName: '',
+    domains: [],
+    products: [],
+    competitors: [],
+    markets: []
+  },
   defaultProvider: 'chatgpt',
   lastSelectedProvider: 'chatgpt',
   rememberLastProvider: true,  // When true, sidebar opens last selected provider; when false, always opens default provider

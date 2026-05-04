@@ -17,7 +17,10 @@
     showDuplicateWarning,
     showNotification,
     setupKeyboardShortcut,
-    observeUrlChanges
+    observeUrlChanges,
+    extractExternalLinks,
+    extractCitationCards,
+    dedupeCitations
   } = window.ConversationExtractorUtils;
 
   // Share button selector for language detection
@@ -240,7 +243,8 @@
           console.log('[Perplexity Extractor] Extracted answer:', content.substring(0, 50));
           messages.push({
             role: 'assistant',
-            content: content.trim()
+            content: content.trim(),
+            sources: extractPerplexityCitations(container)
           });
         }
       } catch (error) {
@@ -268,11 +272,27 @@
       }
 
       const content = formatMessagesAsText(messages);
+      const citations = extractPerplexityCitations(document);
+      const lastUserMessage = [...messages].reverse().find(message => message.role === 'user');
+      const answerMarkdown = messages
+        .filter(message => message.role === 'assistant')
+        .map(message => message.content)
+        .join('\n\n');
 
       return {
         title,
         content,
         messages,
+        type: 'geo_run',
+        query: lastUserMessage?.content || title,
+        answerText: answerMarkdown,
+        answerMarkdown,
+        citations,
+        rawEvidence: {
+          visibleText: document.body.innerText?.slice(0, 5000) || '',
+          linkCount: document.querySelectorAll('a[href]').length,
+          sourcePanelDetected: document.querySelectorAll('div[id^="markdown-content-"], [class*="source"], [class*="citation"]').length > 0
+        },
         timestamp: Date.now(),
         url: window.location.href,
         provider: 'Perplexity'
@@ -281,6 +301,21 @@
       console.error('[Perplexity Extractor] Error extracting conversation:', error);
       throw error;
     }
+  }
+
+  function extractPerplexityCitations(root = document) {
+    return dedupeCitations([
+      ...extractCitationAnchorsFromAnswer(root),
+      ...extractCitationCards(root)
+    ]);
+  }
+
+  function extractCitationAnchorsFromAnswer(root = document) {
+    const answerRoots = root === document
+      ? Array.from(document.querySelectorAll('div[id^="markdown-content-"], main'))
+      : [root];
+
+    return dedupeCitations(answerRoots.flatMap(answerRoot => extractExternalLinks(answerRoot)));
   }
 
   // Handle save button click

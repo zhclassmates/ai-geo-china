@@ -5,7 +5,19 @@ export const PROVIDERS = [
     url: 'https://chatgpt.com',
     icon: '/icons/providers/chatgpt.png',
     iconDark: '/icons/providers/dark/chatgpt.png',
-    enabled: true
+    enabled: true,
+    supportsCitations: true,
+    citationStrategy: 'chatgpt_sources_panel'
+  },
+  {
+    id: 'perplexity',
+    name: 'Perplexity',
+    url: 'https://www.perplexity.ai',
+    icon: '/icons/providers/perplexity.png',
+    iconDark: '/icons/providers/dark/perplexity.png',
+    enabled: true,
+    supportsCitations: true,
+    citationStrategy: 'visible_citation_links'
   },
   {
     id: 'claude',
@@ -13,7 +25,9 @@ export const PROVIDERS = [
     url: 'https://claude.ai',
     icon: '/icons/providers/claude.png',
     iconDark: '/icons/providers/dark/claude.png',
-    enabled: true
+    enabled: true,
+    supportsCitations: false,
+    citationStrategy: 'none'
   },
   {
     id: 'gemini',
@@ -21,15 +35,19 @@ export const PROVIDERS = [
     url: 'https://gemini.google.com',
     icon: '/icons/providers/gemini.png',
     iconDark: '/icons/providers/dark/gemini.png',
-    enabled: true
+    enabled: true,
+    supportsCitations: 'partial',
+    citationStrategy: 'links_and_grounding_cards'
   },
   {
     id: 'google',
-    name: 'Google',
+    name: 'Google AI Mode',
     url: 'https://www.google.com/search?udm=50',
     icon: '/icons/providers/google.png',
     iconDark: '/icons/providers/dark/google.png',
-    enabled: true
+    enabled: true,
+    supportsCitations: true,
+    citationStrategy: 'ai_mode_source_cards'
   },
   {
     id: 'grok',
@@ -37,7 +55,9 @@ export const PROVIDERS = [
     url: 'https://grok.com',
     icon: '/icons/providers/grok.png',
     iconDark: '/icons/providers/dark/grok.png',
-    enabled: true
+    enabled: true,
+    supportsCitations: false,
+    citationStrategy: 'none'
   },
   {
     id: 'copilot',
@@ -45,7 +65,9 @@ export const PROVIDERS = [
     url: 'https://copilot.microsoft.com',
     icon: '/icons/providers/copilot.png',
     iconDark: '/icons/providers/dark/copilot.png',
-    enabled: true
+    enabled: true,
+    supportsCitations: 'partial',
+    citationStrategy: 'visible_citation_links'
   },
   {
     id: 'deepseek',
@@ -53,7 +75,9 @@ export const PROVIDERS = [
     url: 'https://chat.deepseek.com',
     icon: '/icons/providers/deepseek.png',
     iconDark: '/icons/providers/dark/deepseek.png',
-    enabled: true
+    enabled: true,
+    supportsCitations: false,
+    citationStrategy: 'none'
   }
 ];
 
@@ -70,7 +94,7 @@ export async function getProviderByIdWithSettings(id) {
 
 export async function getEnabledProviders() {
   const settings = await chrome.storage.sync.get({
-    enabledProviders: ['chatgpt', 'claude', 'gemini', 'google', 'grok', 'copilot', 'deepseek']
+    enabledProviders: ['chatgpt', 'perplexity', 'claude', 'gemini', 'google', 'grok', 'copilot', 'deepseek']
   });
 
   return PROVIDERS

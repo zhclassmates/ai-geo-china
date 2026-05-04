@@ -2,9 +2,13 @@
 // Handles CRUD operations for prompts in the Prompt Library
 
 const DB_NAME = 'SmarterPanelDB';
-const DB_VERSION = 4;  // Upgraded to add modifiedAt field for conversations
+const DB_VERSION = 5;  // Upgraded to add GEO monitoring stores
 const PROMPTS_STORE = 'prompts';
 const CONVERSATIONS_STORE = 'conversations';
+const GEO_PROJECTS_STORE = 'geoProjects';
+const GEO_PROMPTS_STORE = 'geoPrompts';
+const GEO_RUNS_STORE = 'geoRuns';
+const GEO_CITATIONS_STORE = 'geoCitations';
 
 // T069: Input validation constants
 const MAX_TITLE_LENGTH = 200;
@@ -72,6 +76,14 @@ function validatePromptData(promptData) {
   return errors;
 }
 
+function hasObjectStore(db, storeName) {
+  if (!db.objectStoreNames) return false;
+  if (typeof db.objectStoreNames.contains === 'function') {
+    return db.objectStoreNames.contains(storeName);
+  }
+  return Array.from(db.objectStoreNames).includes(storeName);
+}
+
 // T029: Initialize IndexedDB
 export async function initPromptDB() {
   return new Promise((resolve, reject) => {
@@ -128,6 +140,55 @@ export async function initPromptDB() {
 
         // Add index for conversationId to enable efficient duplicate checking
         conversationsStore.createIndex('conversationId', 'conversationId', { unique: false });
+      }
+
+      if (oldVersion < 5) {
+        if (!hasObjectStore(db, GEO_PROJECTS_STORE)) {
+          const geoProjectsStore = db.createObjectStore(GEO_PROJECTS_STORE, {
+            keyPath: 'id',
+            autoIncrement: true
+          });
+
+          geoProjectsStore.createIndex('brandName', 'brandName', { unique: false });
+          geoProjectsStore.createIndex('createdAt', 'createdAt', { unique: false });
+        }
+
+        if (!hasObjectStore(db, GEO_PROMPTS_STORE)) {
+          const geoPromptsStore = db.createObjectStore(GEO_PROMPTS_STORE, {
+            keyPath: 'id',
+            autoIncrement: true
+          });
+
+          geoPromptsStore.createIndex('projectId', 'projectId', { unique: false });
+          geoPromptsStore.createIndex('intent', 'intent', { unique: false });
+          geoPromptsStore.createIndex('language', 'language', { unique: false });
+          geoPromptsStore.createIndex('createdAt', 'createdAt', { unique: false });
+        }
+
+        if (!hasObjectStore(db, GEO_RUNS_STORE)) {
+          const geoRunsStore = db.createObjectStore(GEO_RUNS_STORE, {
+            keyPath: 'id',
+            autoIncrement: true
+          });
+
+          geoRunsStore.createIndex('projectId', 'projectId', { unique: false });
+          geoRunsStore.createIndex('provider', 'provider', { unique: false });
+          geoRunsStore.createIndex('promptId', 'promptId', { unique: false });
+          geoRunsStore.createIndex('createdAt', 'createdAt', { unique: false });
+          geoRunsStore.createIndex('targetMentioned', 'scores.targetMentioned', { unique: false });
+          geoRunsStore.createIndex('targetCited', 'scores.targetCited', { unique: false });
+        }
+
+        if (!hasObjectStore(db, GEO_CITATIONS_STORE)) {
+          const geoCitationsStore = db.createObjectStore(GEO_CITATIONS_STORE, {
+            keyPath: 'id',
+            autoIncrement: true
+          });
+
+          geoCitationsStore.createIndex('domain', 'domain', { unique: false });
+          geoCitationsStore.createIndex('sourceRole', 'sourceRole', { unique: false });
+          geoCitationsStore.createIndex('runId', 'runId', { unique: false });
+        }
       }
     };
   });

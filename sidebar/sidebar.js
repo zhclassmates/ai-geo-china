@@ -27,13 +27,14 @@ import {
   toggleConversationFavorite,
   getAllConversationTags,
   generateAutoTitle,
-  findConversationByConversationId
+  findConversationByConversationId,
+  getAllGeoRuns
 } from '../modules/history-manager.js';
 
 let currentProvider = null;
 const loadedIframes = new Map();  // providerId -> iframe element
 const loadedIframesState = new Map();  // providerId -> 'loading' | 'ready'
-let currentView = 'providers';  // 'providers', 'prompt-library', or 'chat-history'
+let currentView = 'providers';  // 'providers', 'prompt-library', 'chat-history', or 'geo-dashboard'
 let currentEditingPromptId = null;
 let currentInsertPromptId = null;  // T071: For insert prompt modal
 let isShowingFavorites = false;
@@ -66,6 +67,7 @@ async function init() {
   setupMessageListener();
   setupPromptLibrary();  // T045: Initialize prompt library
   setupChatHistory();     // Initialize chat history
+  setupGeoDashboard();    // Initialize GEO dashboard
 
   // Re-render tabs when theme changes
   setupThemeChangeListener();
@@ -142,6 +144,15 @@ async function renderProviderTabs() {
   separator.className = 'tab-separator';
   tabsContainer.appendChild(separator);
 
+  // Add GEO dashboard tab
+  const geoTab = document.createElement('button');
+  geoTab.id = 'geo-dashboard-tab';
+  geoTab.dataset.view = 'geo-dashboard';
+  geoTab.title = 'GEO Dashboard';
+  geoTab.innerHTML = '<span class="material-symbols-outlined">query_stats</span>';
+  geoTab.addEventListener('click', () => switchToView('geo-dashboard'));
+  tabsContainer.appendChild(geoTab);
+
   // Add chat history tab
   const historyTab = document.createElement('button');
   historyTab.id = 'chat-history-tab';
@@ -214,6 +225,7 @@ async function switchProvider(providerId) {
   currentView = 'providers';
   document.getElementById('prompt-library').style.display = 'none';
   document.getElementById('chat-history').style.display = 'none';
+  document.getElementById('geo-dashboard').style.display = 'none';
 
   // Show provider container
   document.getElementById('provider-container').style.display = 'flex';
@@ -381,6 +393,11 @@ function setupMessageListener() {
           // Refresh chat history view if currently displayed
           if (currentView === 'chat-history') {
             await renderConversationList();
+          }
+          sendResponse({ success: true });
+        } else if (message.action === 'refreshGeoDashboard') {
+          if (currentView === 'geo-dashboard') {
+            await renderGeoDashboard();
           }
           sendResponse({ success: true });
         } else if (message.action === 'checkFocus') {
@@ -749,6 +766,7 @@ function switchToView(view) {
   document.getElementById('provider-container').style.display = 'none';
   document.getElementById('prompt-library').style.display = 'none';
   document.getElementById('chat-history').style.display = 'none';
+  document.getElementById('geo-dashboard').style.display = 'none';
 
   // Deactivate all tabs
   document.querySelectorAll('#provider-tabs button').forEach(btn => {
@@ -760,6 +778,10 @@ function switchToView(view) {
     document.getElementById('chat-history-tab').classList.add('active');
     renderConversationList();
     updateProviderFilter();
+  } else if (view === 'geo-dashboard') {
+    document.getElementById('geo-dashboard').style.display = 'flex';
+    document.getElementById('geo-dashboard-tab').classList.add('active');
+    renderGeoDashboard();
   } else if (view === 'prompt-library') {
     document.getElementById('prompt-library').style.display = 'flex';
     document.getElementById('prompt-library-tab').classList.add('active');
@@ -775,6 +797,117 @@ function switchToView(view) {
       if (providerTab) providerTab.classList.add('active');
     }
   }
+}
+
+function setupGeoDashboard() {
+  const refreshBtn = document.getElementById('geo-refresh-btn');
+  if (refreshBtn) {
+    refreshBtn.addEventListener('click', renderGeoDashboard);
+  }
+}
+
+async function renderGeoDashboard() {
+  const listContainer = document.getElementById('geo-run-list');
+  let runs = [];
+
+  try {
+    runs = await getAllGeoRuns();
+  } catch (error) {
+    console.error('Error loading GEO runs:', error);
+    listContainer.innerHTML = '<div class="geo-empty">Unable to load GEO runs.</div>';
+    return;
+  }
+
+  runs.sort((a, b) => (b.createdAt || b.timestamp || 0) - (a.createdAt || a.timestamp || 0));
+  updateGeoSummary(runs);
+
+  if (runs.length === 0) {
+    listContainer.innerHTML = `
+      <div class="geo-empty">
+        <p><span class="material-symbols-outlined" style="font-size: 44px; opacity: 0.45;">query_stats</span></p>
+        <p>No GEO runs yet</p>
+        <p>Open ChatGPT, Perplexity, or Google AI Mode, then save an answer with citations.</p>
+      </div>
+    `;
+    return;
+  }
+
+  listContainer.innerHTML = runs.slice(0, 50).map(run => {
+    const createdAt = new Date(run.createdAt || run.timestamp).toLocaleString();
+    const citations = Array.isArray(run.citations) ? run.citations : [];
+    const mentions = Array.isArray(run.mentions) ? run.mentions : [];
+    const diagnostics = Array.isArray(run.diagnostics) ? run.diagnostics : [];
+    const topCitations = citations.slice(0, 4);
+    const provider = getProviderById(String(run.provider || '').toLowerCase());
+    const providerIconSrc = provider ? (isDarkTheme() && provider.iconDark ? provider.iconDark : provider.icon) : '';
+
+    return `
+      <div class="geo-run-card">
+        <div class="geo-run-header">
+          <div class="geo-run-title">
+            ${providerIconSrc ? `<img class="provider-icon-small" src="${providerIconSrc}" alt="${escapeHtml(run.provider)}">` : ''}
+            <span>${escapeHtml(run.provider || 'Unknown')}</span>
+          </div>
+          <span class="geo-run-date">${escapeHtml(createdAt)}</span>
+        </div>
+        <div class="geo-run-query">${escapeHtml(run.query || 'Untitled GEO run')}</div>
+        <div class="geo-badges">
+          <span class="geo-badge ${run.scores?.targetMentioned ? 'good' : 'bad'}">Mention ${run.scores?.targetMentioned ? 'yes' : 'no'}</span>
+          <span class="geo-badge ${run.scores?.targetCited ? 'good' : 'bad'}">Citation ${run.scores?.targetCited ? 'yes' : 'no'}</span>
+          <span class="geo-badge">Voice ${formatPercent(run.scores?.shareOfVoice || 0)}</span>
+          ${run.scores?.targetRank ? `<span class="geo-badge">Rank ${run.scores.targetRank}</span>` : ''}
+        </div>
+        ${mentions.length > 0 ? `
+          <div class="geo-section">
+            <div class="geo-section-title">Mentions</div>
+            <div class="geo-chip-row">
+              ${mentions.slice(0, 6).map(mention => `<span class="geo-chip">${escapeHtml(mention.entity)} · ${escapeHtml(mention.type)}${mention.listRank ? ` · #${mention.listRank}` : ''}</span>`).join('')}
+            </div>
+          </div>
+        ` : ''}
+        ${topCitations.length > 0 ? `
+          <div class="geo-section">
+            <div class="geo-section-title">Sources</div>
+            ${topCitations.map(citation => `
+              <a class="geo-source" href="${escapeHtml(citation.url)}" target="_blank">
+                <span>${escapeHtml(citation.domain)}</span>
+                <small>${escapeHtml(citation.sourceRole || 'third_party')} · ${escapeHtml(citation.sourceType || 'unknown')}</small>
+              </a>
+            `).join('')}
+          </div>
+        ` : ''}
+        ${diagnostics.length > 0 ? `
+          <div class="geo-section">
+            <div class="geo-section-title">Diagnostics</div>
+            ${diagnostics.slice(0, 3).map(item => `
+              <div class="geo-diagnostic ${escapeHtml(item.severity || 'low')}">
+                <strong>${escapeHtml(item.type || 'gap')}</strong>
+                <span>${escapeHtml(item.message || '')}</span>
+              </div>
+            `).join('')}
+          </div>
+        ` : ''}
+      </div>
+    `;
+  }).join('');
+}
+
+function updateGeoSummary(runs) {
+  const totalRuns = runs.length;
+  const mentionRuns = runs.filter(run => run.scores?.targetMentioned).length;
+  const citationRuns = runs.filter(run => run.scores?.targetCited).length;
+  const averageVoice = totalRuns > 0
+    ? runs.reduce((sum, run) => sum + (run.scores?.shareOfVoice || 0), 0) / totalRuns
+    : 0;
+
+  document.getElementById('geo-total-runs').textContent = String(totalRuns);
+  document.getElementById('geo-mention-rate').textContent = formatPercent(totalRuns ? mentionRuns / totalRuns : 0);
+  document.getElementById('geo-citation-rate').textContent = formatPercent(totalRuns ? citationRuns / totalRuns : 0);
+  document.getElementById('geo-share-voice').textContent = formatPercent(averageVoice);
+}
+
+function formatPercent(value) {
+  return `${Math.round((Number(value) || 0) * 100)}%`;
 }
 
 async function renderPromptList(prompts = null) {

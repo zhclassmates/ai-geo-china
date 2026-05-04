@@ -20,7 +20,7 @@ import {
   checkForUpdates
 } from '../modules/version-checker.js';
 import { t, translatePage, getCurrentLanguage, initializeLanguage } from '../modules/i18n.js';
-const DEFAULT_ENABLED_PROVIDERS = ['chatgpt', 'claude', 'gemini', 'google', 'grok', 'deepseek', 'copilot'];
+const DEFAULT_ENABLED_PROVIDERS = ['chatgpt', 'perplexity', 'claude', 'gemini', 'google', 'grok', 'deepseek', 'copilot'];
 
 // Helper function to get browser's current language in our supported format
 function getCurrentBrowserLanguage() {
@@ -211,6 +211,75 @@ async function loadSettings() {
 
   // Load custom settings
   loadCustomEnterSettings(enterBehavior);
+
+  loadGeoProjectSettings(settings.geoProject);
+}
+
+function loadGeoProjectSettings(project = {}) {
+  document.getElementById('geo-brand-name').value = project.brandName || '';
+  document.getElementById('geo-domains').value = (project.domains || []).join(', ');
+  document.getElementById('geo-products').value = (project.products || [])
+    .map(product => `${product.name || ''}${product.aliases?.length ? ` | ${product.aliases.join(', ')}` : ''}`)
+    .join('\n');
+  document.getElementById('geo-competitors').value = (project.competitors || [])
+    .map(competitor => {
+      const domains = (competitor.domains || []).join(', ');
+      const aliases = (competitor.aliases || []).join(', ');
+      return [competitor.name || '', domains, aliases].filter(Boolean).join(' | ');
+    })
+    .join('\n');
+  document.getElementById('geo-markets').value = (project.markets || []).join(', ');
+}
+
+function parseCsvList(value) {
+  return String(value || '')
+    .split(',')
+    .map(item => item.trim())
+    .filter(Boolean);
+}
+
+function parseGeoProducts(value) {
+  return String(value || '')
+    .split('\n')
+    .map(line => line.trim())
+    .filter(Boolean)
+    .map(line => {
+      const [name, aliases = ''] = line.split('|').map(part => part.trim());
+      return {
+        name,
+        aliases: parseCsvList(aliases)
+      };
+    })
+    .filter(product => product.name);
+}
+
+function parseGeoCompetitors(value) {
+  return String(value || '')
+    .split('\n')
+    .map(line => line.trim())
+    .filter(Boolean)
+    .map(line => {
+      const [name = '', domains = '', aliases = ''] = line.split('|').map(part => part.trim());
+      return {
+        name,
+        domains: parseCsvList(domains),
+        aliases: parseCsvList(aliases)
+      };
+    })
+    .filter(competitor => competitor.name || competitor.domains.length > 0);
+}
+
+async function saveGeoProjectSettings() {
+  const geoProject = {
+    brandName: document.getElementById('geo-brand-name').value.trim(),
+    domains: parseCsvList(document.getElementById('geo-domains').value).map(domain => domain.replace(/^https?:\/\//, '').replace(/\/.*$/, '').toLowerCase()),
+    products: parseGeoProducts(document.getElementById('geo-products').value),
+    competitors: parseGeoCompetitors(document.getElementById('geo-competitors').value),
+    markets: parseCsvList(document.getElementById('geo-markets').value)
+  };
+
+  await saveSetting('geoProject', geoProject);
+  showStatus('success', 'GEO project saved');
 }
 
 // T052-T053: Render provider enable/disable toggles
@@ -372,6 +441,8 @@ function setupEventListeners() {
     await saveSetting('defaultProvider', e.target.value);
     showStatus('success', t('msgDefaultProviderUpdated'));
   });
+
+  document.getElementById('save-geo-project-btn')?.addEventListener('click', saveGeoProjectSettings);
 
   // Keyboard shortcut toggle
   const shortcutToggle = document.getElementById('keyboard-shortcut-toggle');

@@ -17,7 +17,10 @@
     showDuplicateWarning,
     showNotification,
     setupKeyboardShortcut,
-    observeUrlChanges
+    observeUrlChanges,
+    extractExternalLinks,
+    extractCitationCards,
+    dedupeCitations
   } = window.ConversationExtractorUtils;
 
   // Share button selector for language detection
@@ -269,7 +272,8 @@
 
     return {
       role,
-      content: content.trim()
+      content: content.trim(),
+      sources: role === 'assistant' ? extractGoogleAIModeLinks(container) : []
     };
   }
 
@@ -284,11 +288,31 @@
       }
 
       const content = formatMessagesAsText(messages);
+      const citations = dedupeCitations([
+        ...messages.filter(message => message.role === 'assistant').flatMap(message => message.sources || []),
+        ...extractGoogleAIModeLinks(document),
+        ...extractGoogleSourceCards(document)
+      ]);
+      const lastUserMessage = [...messages].reverse().find(message => message.role === 'user');
+      const answerMarkdown = messages
+        .filter(message => message.role === 'assistant')
+        .map(message => message.content)
+        .join('\n\n');
 
       return {
         title,
         content,
         messages,
+        type: 'geo_run',
+        query: lastUserMessage?.content || title,
+        answerText: answerMarkdown,
+        answerMarkdown,
+        citations,
+        rawEvidence: {
+          visibleText: document.body.innerText?.slice(0, 5000) || '',
+          linkCount: document.querySelectorAll('a[href]').length,
+          sourcePanelDetected: document.querySelectorAll('[class*="source"], [class*="citation"], [role="article"]').length > 0
+        },
         timestamp: Date.now(),
         url: window.location.href,
         provider: 'Google'
@@ -297,6 +321,18 @@
       console.error('[Google Extractor] Error extracting conversation:', error);
       throw error;
     }
+  }
+
+  function extractGoogleAIModeLinks(root = document) {
+    const candidateRoots = root === document
+      ? Array.from(document.querySelectorAll('main, [role="article"], div[data-processed="true"]'))
+      : [root];
+
+    return dedupeCitations(candidateRoots.flatMap(candidateRoot => extractExternalLinks(candidateRoot)));
+  }
+
+  function extractGoogleSourceCards(root = document) {
+    return extractCitationCards(root);
   }
 
   // Handle save button click

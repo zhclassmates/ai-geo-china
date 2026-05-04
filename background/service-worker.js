@@ -1,7 +1,9 @@
 import { notifyMessage } from '../modules/messaging.js';
 import {
   saveConversation,
-  findConversationByConversationId
+  findConversationByConversationId,
+  saveGeoRun,
+  getDefaultGeoProject
 } from '../modules/history-manager.js';
 import { t, initializeLanguage } from '../modules/i18n.js';
 
@@ -80,7 +82,7 @@ async function createContextMenus() {
 
   // Get enabled providers from settings
   const settings = await chrome.storage.sync.get({
-    enabledProviders: ['chatgpt', 'claude', 'gemini', 'google', 'grok', 'deepseek', 'copilot']
+    enabledProviders: ['chatgpt', 'perplexity', 'claude', 'gemini', 'google', 'grok', 'deepseek', 'copilot']
   });
 
   const enabledProviders = settings.enabledProviders;
@@ -95,11 +97,12 @@ async function createContextMenus() {
   // Create submenu for each enabled provider
   const providerNames = {
     chatgpt: 'ChatGPT',
+    perplexity: 'Perplexity',
     claude: 'Claude',
     gemini: 'Gemini',
     grok: 'Grok',
     deepseek: 'DeepSeek',
-    google: 'Google',
+    google: 'Google AI Mode',
     copilot: 'Microsoft Copilot'
   };
 
@@ -317,6 +320,15 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     // Handle conversation save from ChatGPT page
     handleSaveConversation(message.payload, sender).then(sendResponse);
     return true; // Keep channel open for async response
+  } else if (message.action === 'saveGeoRunFromPage') {
+    handleSaveGeoRun(message.payload, sender).then(sendResponse);
+    return true;
+  } else if (message.action === 'analyzeGeoRun') {
+    handleAnalyzeGeoRun(message.payload).then(sendResponse);
+    return true;
+  } else if (message.action === 'fetchCitationPage') {
+    handleFetchCitationPage(message.payload).then(sendResponse);
+    return true;
   } else if (message.action === 'checkDuplicateConversation') {
     // Handle duplicate check request
     handleCheckDuplicate(message.payload).then(sendResponse);
@@ -396,13 +408,31 @@ async function handleSaveConversation(conversationData, sender) {
   try {
     // Save directly to IndexedDB without requiring sidebar
     const savedConversation = await saveConversation(conversationData);
+    let savedGeoRun = null;
+
+    if (conversationData.type === 'geo_run' || Array.isArray(conversationData.citations)) {
+      const geoRunResponse = await handleSaveGeoRun({
+        ...conversationData,
+        conversationId: savedConversation.id
+      }, sender);
+
+      if (geoRunResponse.success) {
+        savedGeoRun = geoRunResponse.data;
+      }
+    }
 
     // Notify sidebar to refresh chat history if it's open
     try {
       await notifyMessage({
         action: 'refreshChatHistory',
-        payload: { conversationId: savedConversation.id }
+        payload: { conversationId: savedConversation.id, geoRunId: savedGeoRun?.id }
       });
+      if (savedGeoRun) {
+        await notifyMessage({
+          action: 'refreshGeoDashboard',
+          payload: { geoRunId: savedGeoRun.id }
+        });
+      }
     } catch (error) {
       // Sidebar may not be open, that's okay
     }
@@ -439,11 +469,360 @@ async function handleSaveConversation(conversationData, sender) {
       }
     }
 
-    return { success: true, data: savedConversation };
+    return { success: true, data: savedConversation, geoRun: savedGeoRun };
   } catch (error) {
     console.error('[Background] Error saving conversation:', error);
     return { success: false, error: error.message };
   }
+}
+
+async function handleSaveGeoRun(payload, sender) {
+  try {
+    const analysis = await handleAnalyzeGeoRun(payload);
+    if (!analysis.success) {
+      return analysis;
+    }
+
+    const savedRun = await saveGeoRun(analysis.data);
+    return { success: true, data: savedRun };
+  } catch (error) {
+    console.error('[Background] Error saving GEO run:', error);
+    return { success: false, error: error.message };
+  }
+}
+
+async function handleAnalyzeGeoRun(payload) {
+  try {
+    const project = payload.project || await getDefaultGeoProject();
+    const citations = normalizeAndClassifyCitations(payload.citations || [], project);
+    const answerText = payload.answerText || payload.answerMarkdown || extractAssistantAnswer(payload.messages) || payload.content || '';
+    const query = payload.query || extractLastUserQuery(payload.messages) || payload.title || '';
+    const mentions = extractMentions(answerText, project);
+    const rankings = extractRankings(mentions);
+    const sentiment = calculateOverallSentiment(mentions);
+    const scores = calculateGeoScores(citations, mentions);
+    const diagnostics = buildDiagnostics({ citations, mentions, scores, project });
+
+    return {
+      success: true,
+      data: {
+        ...payload,
+        projectId: project.id || 'default',
+        query,
+        answerText,
+        answerMarkdown: payload.answerMarkdown || answerText,
+        citations,
+        mentions,
+        rankings,
+        sentiment,
+        scores,
+        diagnostics,
+        rawEvidence: {
+          ...(payload.rawEvidence || {}),
+          linkCount: payload.rawEvidence?.linkCount ?? citations.length,
+          citationCount: citations.length
+        }
+      }
+    };
+  } catch (error) {
+    console.error('[Background] Error analyzing GEO run:', error);
+    return { success: false, error: error.message };
+  }
+}
+
+async function handleFetchCitationPage(payload) {
+  try {
+    const url = payload?.url;
+    if (!url || !/^https?:\/\//i.test(url)) {
+      throw new Error('A valid citation URL is required');
+    }
+
+    const response = await fetch(url, { redirect: 'follow' });
+    const text = await response.text();
+
+    return {
+      success: true,
+      data: {
+        url: response.url,
+        status: response.status,
+        contentType: response.headers.get('content-type') || '',
+        text: text.slice(0, 50000)
+      }
+    };
+  } catch (error) {
+    console.error('[Background] Error fetching citation page:', error);
+    return { success: false, error: error.message };
+  }
+}
+
+function normalizeAndClassifyCitations(citations, project) {
+  const seen = new Set();
+
+  return citations
+    .map((citation, index) => normalizeCitation(citation, index, project))
+    .filter(Boolean)
+    .filter(citation => {
+      if (seen.has(citation.url)) return false;
+      seen.add(citation.url);
+      return true;
+    })
+    .map((citation, index) => ({ ...citation, position: index + 1 }));
+}
+
+function normalizeCitation(citation, index, project) {
+  if (!citation || !citation.url) return null;
+
+  let url;
+  try {
+    url = new URL(citation.url);
+    if (!['http:', 'https:'].includes(url.protocol)) return null;
+    ['utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content', 'fbclid', 'gclid'].forEach(param => {
+      url.searchParams.delete(param);
+    });
+    url.hash = '';
+  } catch (error) {
+    return null;
+  }
+
+  const domain = url.hostname.replace(/^www\./, '').toLowerCase();
+  const targetDomains = Array.isArray(project.domains) ? project.domains : [];
+  const competitors = Array.isArray(project.competitors) ? project.competitors : [];
+  const isTargetDomain = targetDomains.some(targetDomain => domainMatches(domain, targetDomain));
+  const isCompetitorDomain = competitors.some(competitor => {
+    const domains = Array.isArray(competitor.domains) ? competitor.domains : [];
+    return domains.some(competitorDomain => domainMatches(domain, competitorDomain));
+  });
+
+  return {
+    url: url.href,
+    domain,
+    title: sanitizeText(citation.title || domain, 160),
+    anchorText: sanitizeText(citation.anchorText || citation.title || domain, 240),
+    position: citation.position || index + 1,
+    sourceType: citation.sourceType || classifySourceType(domain, citation.title, citation.anchorText),
+    sourceRole: isTargetDomain ? 'target' : isCompetitorDomain ? 'competitor' : 'third_party',
+    isTargetDomain,
+    isCompetitorDomain
+  };
+}
+
+function domainMatches(domain, candidate) {
+  const normalized = String(candidate || '').replace(/^www\./, '').toLowerCase();
+  return normalized && (domain === normalized || domain.endsWith(`.${normalized}`));
+}
+
+function classifySourceType(domain, title = '', text = '') {
+  const haystack = `${domain} ${title} ${text}`.toLowerCase();
+
+  if (/\.(edu|ac\.[a-z]{2})$/.test(domain) || haystack.includes('university') || haystack.includes('大学')) return 'university';
+  if (/\.(gov|gov\.[a-z]{2})$/.test(domain) || haystack.includes('government') || haystack.includes('政府')) return 'government';
+  if (/(reddit|quora|zhihu|stackexchange|forum|bbs|community)/.test(haystack)) return 'forum';
+  if (/(amazon|shopify|etsy|ebay|taobao|tmall|jd\.com|marketplace)/.test(haystack)) return 'marketplace';
+  if (/(review|reviews|best-|top-|compare|comparison|评测|测评|排行|榜单|对比)/.test(haystack)) return 'review';
+  if (/(news|media|press|magazine|journal|blog|times|post|资讯|新闻|媒体)/.test(haystack)) return 'media';
+  return 'official';
+}
+
+function extractAssistantAnswer(messages = []) {
+  return messages
+    .filter(message => message.role === 'assistant')
+    .map(message => message.content)
+    .filter(Boolean)
+    .join('\n\n');
+}
+
+function extractLastUserQuery(messages = []) {
+  return [...messages].reverse().find(message => message.role === 'user')?.content || '';
+}
+
+function extractMentions(answerText, project = {}) {
+  const entities = [];
+
+  if (project.brandName) {
+    entities.push({ entity: project.brandName, type: 'target_brand', aliases: [project.brandName] });
+  }
+
+  (project.products || []).forEach(product => {
+    entities.push({
+      entity: product.name,
+      type: 'target_product',
+      aliases: [product.name, ...(product.aliases || [])]
+    });
+  });
+
+  (project.competitors || []).forEach(competitor => {
+    entities.push({
+      entity: competitor.name || competitor.domains?.[0],
+      type: 'competitor',
+      aliases: [competitor.name, ...(competitor.aliases || []), ...(competitor.domains || [])].filter(Boolean)
+    });
+  });
+
+  return entities
+    .map(entity => buildMention(answerText, entity))
+    .filter(Boolean)
+    .sort((a, b) => a.firstPosition - b.firstPosition);
+}
+
+function buildMention(answerText, entity) {
+  if (!answerText || !entity.entity) return null;
+
+  const aliases = [...new Set((entity.aliases || []).filter(Boolean))];
+  const matches = [];
+
+  aliases.forEach(alias => {
+    const regex = new RegExp(escapeRegExp(alias), 'gi');
+    let match;
+    while ((match = regex.exec(answerText)) !== null) {
+      matches.push({ index: match.index, alias });
+      if (match.index === regex.lastIndex) regex.lastIndex += 1;
+    }
+  });
+
+  if (matches.length === 0) return null;
+
+  matches.sort((a, b) => a.index - b.index);
+  const firstPosition = matches[0].index;
+
+  return {
+    entity: entity.entity,
+    type: entity.type,
+    count: matches.length,
+    firstPosition,
+    listRank: findListRank(answerText, aliases),
+    sentiment: inferSentiment(answerText, firstPosition),
+    context: answerText.slice(Math.max(0, firstPosition - 80), firstPosition + 180).replace(/\s+/g, ' ').trim()
+  };
+}
+
+function findListRank(answerText, aliases) {
+  const lines = answerText.split(/\n+/);
+
+  for (let i = 0; i < lines.length; i += 1) {
+    const line = lines[i];
+    const rankMatch = line.match(/^\s*(?:#{1,6}\s*)?(?:\d+[\.)、]|[-*]\s+)\s*(.+)$/);
+    if (!rankMatch) continue;
+
+    const hasAlias = aliases.some(alias => alias && line.toLowerCase().includes(alias.toLowerCase()));
+    if (!hasAlias) continue;
+
+    const explicitRank = line.match(/^\s*(?:#{1,6}\s*)?(\d+)[\.)、]/);
+    if (explicitRank) return Number(explicitRank[1]);
+
+    return lines.slice(0, i + 1).filter(candidate => /^\s*(?:#{1,6}\s*)?(?:\d+[\.)、]|[-*]\s+)/.test(candidate)).length;
+  }
+
+  return null;
+}
+
+function extractRankings(mentions) {
+  return mentions
+    .filter(mention => mention.listRank !== null)
+    .map(mention => ({
+      entity: mention.entity,
+      type: mention.type,
+      listRank: mention.listRank,
+      firstPosition: mention.firstPosition
+    }));
+}
+
+function inferSentiment(answerText, index) {
+  const context = answerText.slice(Math.max(0, index - 120), index + 220).toLowerCase();
+  const positive = ['best', 'recommended', 'top', 'strong', 'trusted', '首选', '推荐', '靠谱', '优秀', '性价比', '适合', 'tốt', 'uy tín'];
+  const negative = ['avoid', 'weak', 'expensive', 'limited', 'complaint', '不推荐', '较弱', '不足', '昂贵', '投诉', 'hạn chế', 'không nên'];
+  const positiveScore = positive.filter(word => context.includes(word)).length;
+  const negativeScore = negative.filter(word => context.includes(word)).length;
+
+  if (positiveScore > negativeScore) return 'positive';
+  if (negativeScore > positiveScore) return 'negative';
+  return 'neutral';
+}
+
+function calculateOverallSentiment(mentions) {
+  const targetMentions = mentions.filter(mention => mention.type.startsWith('target'));
+  if (targetMentions.some(mention => mention.sentiment === 'positive')) return 'positive';
+  if (targetMentions.some(mention => mention.sentiment === 'negative')) return 'negative';
+  return 'neutral';
+}
+
+function calculateGeoScores(citations, mentions) {
+  const targetMentions = mentions.filter(mention => mention.type.startsWith('target'));
+  const competitorMentions = mentions.filter(mention => mention.type === 'competitor');
+  const targetMentionCount = targetMentions.reduce((sum, mention) => sum + mention.count, 0);
+  const competitorMentionCount = competitorMentions.reduce((sum, mention) => sum + mention.count, 0);
+  const totalMentions = targetMentionCount + competitorMentionCount;
+
+  return {
+    targetMentioned: targetMentionCount > 0,
+    targetCited: citations.some(citation => citation.sourceRole === 'target'),
+    competitorMentioned: competitorMentionCount > 0,
+    competitorCited: citations.some(citation => citation.sourceRole === 'competitor'),
+    targetRank: targetMentions.map(mention => mention.listRank).filter(Boolean).sort((a, b) => a - b)[0] || null,
+    mentionRate: targetMentionCount > 0 ? 1 : 0,
+    citationRate: citations.some(citation => citation.sourceRole === 'target') ? 1 : 0,
+    shareOfVoice: totalMentions > 0 ? targetMentionCount / totalMentions : 0
+  };
+}
+
+function buildDiagnostics({ citations, mentions, scores, project }) {
+  const diagnostics = [];
+  const thirdPartyCitations = citations.filter(citation => citation.sourceRole === 'third_party');
+  const competitorMentions = mentions.filter(mention => mention.type === 'competitor');
+
+  if (!scores.targetMentioned) {
+    diagnostics.push({
+      type: 'retrieval_gap',
+      severity: 'high',
+      message: 'Target brand/product was not mentioned in the AI answer.',
+      evidence: competitorMentions.length > 0 ? 'Competitors appeared while the target did not.' : 'No configured target entity appeared in the answer.'
+    });
+  }
+
+  if (scores.targetMentioned && !scores.targetCited) {
+    diagnostics.push({
+      type: 'citation_gap',
+      severity: 'medium',
+      message: 'Target entity was mentioned, but target domains were not cited.',
+      evidence: 'The answer may know the entity from third-party pages rather than the official site.'
+    });
+  }
+
+  if (scores.competitorCited || competitorMentions.length > 0) {
+    diagnostics.push({
+      type: 'competitor_gap',
+      severity: 'medium',
+      message: 'Competitors received answer visibility or citations.',
+      evidence: competitorMentions.map(mention => `${mention.entity}${mention.listRank ? ` rank ${mention.listRank}` : ''}`).join(', ')
+    });
+  }
+
+  if (thirdPartyCitations.length > 0 && !scores.targetCited) {
+    diagnostics.push({
+      type: 'source_gap',
+      severity: 'medium',
+      message: 'The AI answer relied on third-party sources instead of target domains.',
+      evidence: thirdPartyCitations.slice(0, 5).map(citation => citation.domain).join(', ')
+    });
+  }
+
+  if ((project.markets || []).length > 1 && !scores.targetMentioned) {
+    diagnostics.push({
+      type: 'language_gap',
+      severity: 'low',
+      message: 'Multi-language markets are configured, but this answer did not surface the target.',
+      evidence: `Configured markets: ${(project.markets || []).join(', ')}`
+    });
+  }
+
+  return diagnostics;
+}
+
+function sanitizeText(value, maxLength) {
+  return String(value || '').replace(/\s+/g, ' ').trim().slice(0, maxLength);
+}
+
+function escapeRegExp(value) {
+  return String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
 // T069 & T070: Listen for keyboard shortcuts with toggle support

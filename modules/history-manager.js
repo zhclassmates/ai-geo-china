@@ -5,6 +5,9 @@ import { initPromptDB } from './prompt-manager.js';
 
 const DB_NAME = 'SmarterPanelDB';
 const CONVERSATIONS_STORE = 'conversations';
+const GEO_PROJECTS_STORE = 'geoProjects';
+const GEO_RUNS_STORE = 'geoRuns';
+const GEO_CITATIONS_STORE = 'geoCitations';
 
 // Validation constants
 const MAX_TITLE_LENGTH = 200;
@@ -72,6 +75,11 @@ function generateSearchText(conversation) {
     ...conversation.tags
   ];
   return parts.join(' ').toLowerCase();
+}
+
+function sanitizeArray(value, mapper = item => item) {
+  if (!Array.isArray(value)) return [];
+  return value.map(mapper).filter(Boolean);
 }
 
 // Generate auto title from content (first line or truncated content)
@@ -592,6 +600,178 @@ export async function findConversationByConversationId(conversationId) {
     const index = store.index('conversationId');
     const request = index.get(conversationId);
     return wrapRequest(request, value => value || null);
+  });
+}
+
+export async function getDefaultGeoProject() {
+  await ensureDb();
+
+  const projects = await runWithRetry(() => {
+    const transaction = db.transaction([GEO_PROJECTS_STORE], 'readonly');
+    const store = transaction.objectStore(GEO_PROJECTS_STORE);
+    const request = store.getAll();
+    return wrapRequest(request, value => value || []);
+  });
+
+  if (projects.length > 0) {
+    return projects.sort((a, b) => (b.modifiedAt || b.createdAt || 0) - (a.modifiedAt || a.createdAt || 0))[0];
+  }
+
+  const storageProject = await chrome.storage.sync.get({
+    geoProject: {
+      brandName: '',
+      domains: [],
+      products: [],
+      competitors: [],
+      markets: []
+    }
+  });
+
+  return {
+    id: 'default',
+    name: 'Default GEO Project',
+    ...storageProject.geoProject
+  };
+}
+
+export async function saveGeoProject(projectData) {
+  await ensureDb();
+
+  const now = Date.now();
+  const project = {
+    name: sanitizeString(projectData.name || projectData.brandName || 'Default GEO Project', MAX_TITLE_LENGTH),
+    brandName: sanitizeString(projectData.brandName || '', MAX_TITLE_LENGTH),
+    domains: sanitizeArray(projectData.domains, domain => sanitizeString(domain, 200).toLowerCase()),
+    products: sanitizeArray(projectData.products, product => ({
+      name: sanitizeString(product.name || '', MAX_TITLE_LENGTH),
+      aliases: sanitizeArray(product.aliases, alias => sanitizeString(alias, MAX_TITLE_LENGTH))
+    })).filter(product => product.name),
+    competitors: sanitizeArray(projectData.competitors, competitor => ({
+      name: sanitizeString(competitor.name || '', MAX_TITLE_LENGTH),
+      domains: sanitizeArray(competitor.domains, domain => sanitizeString(domain, 200).toLowerCase()),
+      aliases: sanitizeArray(competitor.aliases, alias => sanitizeString(alias, MAX_TITLE_LENGTH))
+    })).filter(competitor => competitor.name || competitor.domains.length > 0),
+    markets: sanitizeArray(projectData.markets, market => sanitizeString(market, 20)),
+    createdAt: projectData.createdAt || now,
+    modifiedAt: now
+  };
+
+  if (projectData.id && projectData.id !== 'default') {
+    return updateGeoProject(projectData.id, project);
+  }
+
+  return runWithRetry(() => {
+    const transaction = db.transaction([GEO_PROJECTS_STORE], 'readwrite');
+    const store = transaction.objectStore(GEO_PROJECTS_STORE);
+    const request = store.add(project);
+    return wrapRequest(request, resolveValue => ({ ...project, id: resolveValue }));
+  });
+}
+
+export async function updateGeoProject(id, updates) {
+  await ensureDb();
+
+  return runWithRetry(() => new Promise((resolve, reject) => {
+    const transaction = db.transaction([GEO_PROJECTS_STORE], 'readwrite');
+    const store = transaction.objectStore(GEO_PROJECTS_STORE);
+    const getRequest = store.get(id);
+
+    getRequest.onsuccess = () => {
+      const project = getRequest.result;
+      if (!project) {
+        reject(new Error(`GEO project with id ${id} not found`));
+        return;
+      }
+
+      const updatedProject = { ...project, ...updates, id, modifiedAt: Date.now() };
+      const putRequest = store.put(updatedProject);
+      wrapRequest(putRequest, () => updatedProject).then(resolve).catch(reject);
+    };
+
+    getRequest.onerror = () => reject(getRequest.error);
+  }));
+}
+
+export async function saveGeoRun(geoRunData) {
+  await ensureDb();
+
+  const now = Date.now();
+  const citations = Array.isArray(geoRunData.citations) ? geoRunData.citations : [];
+  const geoRun = {
+    type: 'geo_run',
+    projectId: geoRunData.projectId || 'default',
+    promptId: geoRunData.promptId || null,
+    conversationId: geoRunData.conversationId || '',
+    provider: sanitizeString(geoRunData.provider || 'unknown', 30),
+    query: sanitizeString(geoRunData.query || '', MAX_CONTENT_LENGTH),
+    answerText: sanitizeString(geoRunData.answerText || '', MAX_CONTENT_LENGTH),
+    answerMarkdown: sanitizeString(geoRunData.answerMarkdown || geoRunData.answerText || '', MAX_CONTENT_LENGTH),
+    answerHtmlHash: sanitizeString(geoRunData.answerHtmlHash || '', 120),
+    citations,
+    mentions: Array.isArray(geoRunData.mentions) ? geoRunData.mentions : [],
+    rankings: Array.isArray(geoRunData.rankings) ? geoRunData.rankings : [],
+    sentiment: geoRunData.sentiment || 'neutral',
+    scores: geoRunData.scores || {
+      targetMentioned: false,
+      targetCited: false,
+      mentionRate: 0,
+      citationRate: 0,
+      shareOfVoice: 0
+    },
+    diagnostics: Array.isArray(geoRunData.diagnostics) ? geoRunData.diagnostics : [],
+    rawEvidence: geoRunData.rawEvidence || {},
+    timestamp: geoRunData.timestamp || now,
+    createdAt: geoRunData.createdAt || now,
+    url: sanitizeString(geoRunData.url || '', 500)
+  };
+
+  return runWithRetry(() => new Promise((resolve, reject) => {
+    const transaction = db.transaction([GEO_RUNS_STORE, GEO_CITATIONS_STORE], 'readwrite');
+    const runsStore = transaction.objectStore(GEO_RUNS_STORE);
+    const citationsStore = transaction.objectStore(GEO_CITATIONS_STORE);
+    const addRunRequest = runsStore.add(geoRun);
+
+    addRunRequest.onsuccess = () => {
+      const runId = addRunRequest.result;
+      const savedRun = { ...geoRun, id: runId };
+
+      citations.forEach((citation, index) => {
+        citationsStore.add({
+          ...citation,
+          runId,
+          citationPosition: citation.position || index + 1,
+          createdAt: savedRun.createdAt
+        });
+      });
+
+      resolve(savedRun);
+    };
+
+    addRunRequest.onerror = () => reject(addRunRequest.error);
+    transaction.onerror = () => reject(transaction.error);
+  }));
+}
+
+export async function getAllGeoRuns() {
+  await ensureDb();
+
+  return runWithRetry(() => {
+    const transaction = db.transaction([GEO_RUNS_STORE], 'readonly');
+    const store = transaction.objectStore(GEO_RUNS_STORE);
+    const request = store.getAll();
+    return wrapRequest(request, value => value || []);
+  });
+}
+
+export async function getGeoCitationsByRun(runId) {
+  await ensureDb();
+
+  return runWithRetry(() => {
+    const transaction = db.transaction([GEO_CITATIONS_STORE], 'readonly');
+    const store = transaction.objectStore(GEO_CITATIONS_STORE);
+    const index = store.index('runId');
+    const request = index.getAll(runId);
+    return wrapRequest(request, value => value || []);
   });
 }
 
