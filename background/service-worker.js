@@ -1,4 +1,5 @@
 import { notifyMessage } from '../modules/messaging.js';
+import { DEFAULT_ENABLED_PROVIDER_IDS, PROVIDERS } from '../modules/providers.js';
 import {
   saveConversation,
   findConversationByConversationId,
@@ -82,7 +83,7 @@ async function createContextMenus() {
 
   // Get enabled providers from settings
   const settings = await chrome.storage.sync.get({
-    enabledProviders: ['chatgpt', 'perplexity', 'claude', 'gemini', 'google', 'grok', 'deepseek', 'copilot']
+    enabledProviders: DEFAULT_ENABLED_PROVIDER_IDS
   });
 
   const enabledProviders = settings.enabledProviders;
@@ -95,16 +96,7 @@ async function createContextMenus() {
   });
 
   // Create submenu for each enabled provider
-  const providerNames = {
-    chatgpt: 'ChatGPT',
-    perplexity: 'Perplexity',
-    claude: 'Claude',
-    gemini: 'Gemini',
-    grok: 'Grok',
-    deepseek: 'DeepSeek',
-    google: 'Google AI Mode',
-    copilot: 'Microsoft Copilot'
-  };
+  const providerNames = Object.fromEntries(PROVIDERS.map(provider => [provider.id, provider.name]));
 
   enabledProviders.forEach(providerId => {
     chrome.contextMenus.create({
@@ -317,7 +309,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     }
     sendResponse({ success: true });
   } else if (message.action === 'saveConversationFromPage') {
-    // Handle conversation save from ChatGPT page
+    // Handle conversation save from provider pages
     handleSaveConversation(message.payload, sender).then(sendResponse);
     return true; // Keep channel open for async response
   } else if (message.action === 'saveGeoRunFromPage') {

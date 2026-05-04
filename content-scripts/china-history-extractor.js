@@ -1,0 +1,256 @@
+// Generic China AI Platform Conversation Extractor
+// Extracts the visible answer and citation links from domestic AI platforms.
+//
+// IMPORTANT: Requires conversation-extractor-utils.js and language-detector.js.
+
+(function() {
+  'use strict';
+
+  const {
+    extractMarkdownFromElement,
+    extractExternalLinks,
+    extractCitationCards,
+    dedupeCitations,
+    formatMessagesAsText,
+    generateConversationId,
+    checkForDuplicate,
+    showNotification,
+    setupKeyboardShortcut
+  } = window.ConversationExtractorUtils;
+
+  const PROVIDERS = {
+    'www.kimi.com': { id: 'kimi', name: 'Kimi' },
+    'www.qianwen.com': { id: 'qianwen', name: '千问' },
+    'yiyan.baidu.com': { id: 'wenxin', name: '文心一言' },
+    'chatglm.cn': { id: 'zhipu', name: '智谱清言' },
+    'www.doubao.com': { id: 'doubao', name: '豆包' },
+    'yuanbao.tencent.com': { id: 'yuanbao', name: '腾讯元宝' },
+    'xinghuo.xfyun.cn': { id: 'xinghuo', name: '讯飞星火' },
+    'metaso.cn': { id: 'metaso', name: '秘塔 AI 搜索' },
+    'www.n.cn': { id: 'nami', name: '纳米 AI' },
+    'n.cn': { id: 'nami', name: '纳米 AI' },
+    'www.tiangong.cn': { id: 'tiangong', name: '天工 AI' }
+  };
+
+  const MESSAGE_SELECTORS = [
+    '[data-testid*="message"]',
+    '[data-testid*="answer"]',
+    '[class*="message"]',
+    '[class*="answer"]',
+    '[class*="markdown"]',
+    '[class*="response"]',
+    '[class*="chat"] article',
+    'article',
+    'main section',
+    'main [role="article"]'
+  ];
+
+  let saveButton = null;
+  let observer = null;
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', init);
+  } else {
+    init();
+  }
+
+  function getProvider() {
+    return PROVIDERS[window.location.hostname] || null;
+  }
+
+  function init() {
+    const provider = getProvider();
+    if (!provider || window !== window.top) return;
+
+    setTimeout(() => {
+      insertSaveButton(provider);
+      observeForChanges(provider);
+    }, 1200);
+  }
+
+  function createSaveButton(provider) {
+    const { text, tooltip } = window.LanguageDetector.getSaveButtonText(null);
+    const button = document.createElement('button');
+    button.id = 'insidebar-china-save-conversation';
+    button.type = 'button';
+    button.title = `${tooltip} (${provider.name})`;
+    button.setAttribute('aria-label', `${text} ${provider.name}`);
+    button.innerHTML = `
+      <span class="insidebar-china-save-icon" aria-hidden="true">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+          <path d="M12 3v11m0 0 4-4m-4 4-4-4M5 17v2a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-2" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </span>
+      <span>${text}</span>
+    `;
+    button.addEventListener('click', handleSaveClick);
+    return button;
+  }
+
+  function insertSaveButton(provider) {
+    if (document.getElementById('insidebar-china-save-conversation')) return;
+    if (!document.body) return;
+
+    saveButton = createSaveButton(provider);
+    document.body.appendChild(saveButton);
+  }
+
+  function observeForChanges(provider) {
+    if (observer || !document.body) return;
+
+    observer = new MutationObserver(() => {
+      if (!document.getElementById('insidebar-china-save-conversation')) {
+        insertSaveButton(provider);
+      }
+    });
+
+    observer.observe(document.body, { childList: true, subtree: true });
+  }
+
+  function getConversationTitle(provider) {
+    const title = document.querySelector('title')?.textContent?.trim();
+    if (title && title.length > 0) {
+      return `${provider.name} - ${title.slice(0, 120)}`;
+    }
+    return `${provider.name} Conversation`;
+  }
+
+  function isVisibleElement(element) {
+    const style = window.getComputedStyle(element);
+    const rect = element.getBoundingClientRect();
+    return style.display !== 'none' &&
+      style.visibility !== 'hidden' &&
+      rect.width > 0 &&
+      rect.height > 0;
+  }
+
+  function extractQuestion() {
+    const candidates = Array.from(document.querySelectorAll('textarea, input[type="text"], [contenteditable="true"], [role="textbox"]'))
+      .filter(isVisibleElement)
+      .map(element => (element.value || element.textContent || '').trim())
+      .filter(text => text.length > 0);
+
+    return candidates[candidates.length - 1] || '';
+  }
+
+  function extractAnswerRoot() {
+    const roots = Array.from(document.querySelectorAll(MESSAGE_SELECTORS.join(',')))
+      .filter(element => !element.closest('#insidebar-china-save-conversation'))
+      .filter(isVisibleElement)
+      .filter(element => {
+        const text = element.innerText || element.textContent || '';
+        return text.trim().length >= 20;
+      });
+
+    if (roots.length > 0) {
+      return roots[roots.length - 1];
+    }
+
+    return document.querySelector('main') || document.body;
+  }
+
+  function extractConversation(provider) {
+    const answerRoot = extractAnswerRoot();
+    const answerMarkdown = extractMarkdownFromElement(answerRoot).trim();
+    const answerText = answerRoot.innerText?.trim() || answerMarkdown;
+    const query = extractQuestion();
+    const citations = dedupeCitations([
+      ...extractCitationCards(answerRoot),
+      ...extractExternalLinks(answerRoot)
+    ]);
+
+    if (!answerMarkdown && citations.length === 0) {
+      throw new Error('No visible answer or sources found');
+    }
+
+    const messages = [];
+    if (query) {
+      messages.push({ role: 'user', content: query });
+    }
+    messages.push({
+      role: 'assistant',
+      content: answerMarkdown || answerText,
+      sources: citations
+    });
+
+    const sourcesMarkdown = citations.length > 0
+      ? '\n\n### Sources\n' + citations.map((source, index) => `${index + 1}. [${source.title || source.domain}](${source.url})`).join('\n')
+      : '';
+
+    return {
+      type: 'geo_run',
+      title: getConversationTitle(provider),
+      content: `${formatMessagesAsText(messages)}${sourcesMarkdown}`,
+      messages,
+      query,
+      answerText,
+      answerMarkdown: answerMarkdown || answerText,
+      citations,
+      provider: provider.id,
+      providerName: provider.name,
+      timestamp: Date.now(),
+      url: window.location.href,
+      rawEvidence: {
+        extractionStrategy: 'generic_china_visible_dom',
+        linkCount: citations.length,
+        citationCount: citations.length
+      }
+    };
+  }
+
+  function setSaveButtonBusy(isBusy) {
+    if (!saveButton) return;
+    saveButton.disabled = isBusy;
+    saveButton.setAttribute('aria-busy', String(isBusy));
+  }
+
+  async function handleSaveClick(event) {
+    event?.preventDefault();
+    event?.stopPropagation();
+
+    const provider = getProvider();
+    if (!provider || !saveButton) return;
+
+    setSaveButtonBusy(true);
+
+    try {
+      const conversation = extractConversation(provider);
+      conversation.conversationId = generateConversationId(conversation.url, conversation.title);
+
+      const duplicateCheck = await checkForDuplicate(conversation.conversationId);
+      if (duplicateCheck.isDuplicate) {
+        const existingContent = (duplicateCheck.existingConversation.content || '').trim();
+        const newContent = (conversation.content || '').trim();
+
+        if (existingContent === newContent) {
+          setSaveButtonBusy(false);
+          return;
+        }
+
+        conversation.overwriteId = duplicateCheck.existingConversation.id;
+        conversation.timestamp = duplicateCheck.existingConversation.timestamp;
+      }
+
+      chrome.runtime.sendMessage({
+        action: 'saveConversationFromPage',
+        payload: conversation
+      }, response => {
+        setSaveButtonBusy(false);
+
+        if (chrome.runtime.lastError) {
+          showNotification('Failed to save: ' + chrome.runtime.lastError.message, 'error');
+          return;
+        }
+
+        if (!response?.success) {
+          showNotification('Failed to save: ' + (response?.error || 'Unknown error'), 'error');
+        }
+      });
+    } catch (error) {
+      setSaveButtonBusy(false);
+      showNotification('Failed to extract conversation: ' + error.message, 'error');
+    }
+  }
+
+  setupKeyboardShortcut(() => handleSaveClick(), () => Boolean(getProvider()));
+})();

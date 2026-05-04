@@ -3,7 +3,7 @@
     "message": "insidebar.ai - local exporter"
   },
   "extensionDescription": {
-    "message": "ChatGPT, Claude, Gemini 등에 빠르게 접근할 수 있는 멀티 AI 사이드바 확장 프로그램"
+    "message": "Domestic AI sidebar extension for Kimi, Qianwen, Wenxin, and more"
   },
   "commandOpenSidebar": {
     "message": "기본 제공자로 insidebar.ai 열기"
@@ -172,7 +172,7 @@
     "message": "AI 제공자 입력 필드에서 Enter 키와 수정 키가 작동하는 방식을 사용자 지정합니다."
   },
   "descEnterBehavior2": {
-    "message": "<strong>적용 대상:</strong> ChatGPT, Claude, Gemini, Google (AI 모드), Grok, DeepSeek 및 Perplexity."
+    "message": "<strong>Applies to:</strong> enabled domestic AI providers."
   },
   "labelEnableEnterCustomization": {
     "message": "Enter 키 사용자 지정 활성화"

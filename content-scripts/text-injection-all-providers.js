@@ -6,38 +6,41 @@
 
   // Provider-specific selectors
   const PROVIDER_SELECTORS = {
-    chatgpt: ['#prompt-textarea'],
-    claude: [
-      '.ProseMirror[role="textbox"]',
-      '.ProseMirror[contenteditable="true"]',
-      'div[contenteditable="true"].ProseMirror',
-      'div[contenteditable="true"]'
-    ],
-    gemini: ['.ql-editor'],
-    grok: ['textarea', '.tiptap', '.ProseMirror'],
-    deepseek: ['textarea.ds-scroll-area'],
-    google: ['textarea.ITIRGe', 'textarea[aria-label="Ask anything"]', 'textarea[maxlength="8192"]'],
-    // Copilot uses textarea with id="userInput" or data-testid="composer-input"
-    copilot: ['textarea#userInput', 'textarea[data-testid="composer-input"]', 'textarea[placeholder*="Message Copilot"]']
+    kimi: ['textarea', '[contenteditable="true"]', '.ProseMirror', '[role="textbox"]'],
+    qianwen: ['textarea', '[contenteditable="true"]', '.ProseMirror', '[role="textbox"]'],
+    wenxin: ['textarea', '[contenteditable="true"]', '.ProseMirror', '[role="textbox"]'],
+    zhipu: ['textarea', '[contenteditable="true"]', '.ProseMirror', '[role="textbox"]'],
+    doubao: ['textarea', '[contenteditable="true"]', '.ProseMirror', '[role="textbox"]'],
+    yuanbao: ['textarea', '[contenteditable="true"]', '.ProseMirror', '[role="textbox"]'],
+    xinghuo: ['textarea', '[contenteditable="true"]', '.ProseMirror', '[role="textbox"]'],
+    metaso: ['textarea', '[contenteditable="true"]', '.ProseMirror', '[role="textbox"]'],
+    nami: ['textarea', '[contenteditable="true"]', '.ProseMirror', '[role="textbox"]'],
+    tiangong: ['textarea', '[contenteditable="true"]', '.ProseMirror', '[role="textbox"]']
   };
 
   // Detect which provider we're on based on hostname
   function detectProvider() {
     const hostname = window.location.hostname;
-    if (hostname.includes('chatgpt.com') || hostname.includes('openai.com')) {
-      return 'chatgpt';
-    } else if (hostname.includes('claude.ai')) {
-      return 'claude';
-    } else if (hostname.includes('gemini.google.com')) {
-      return 'gemini';
-    } else if (hostname.includes('grok.com')) {
-      return 'grok';
-    } else if (hostname.includes('deepseek.com')) {
-      return 'deepseek';
-    } else if (hostname.includes('google.com') && window.location.search.includes('udm=50')) {
-      return 'google';
-    } else if (hostname.includes('copilot.microsoft.com') || hostname.includes('bing.com/chat')) {
-      return 'copilot';
+    if (hostname.includes('kimi.com')) {
+      return 'kimi';
+    } else if (hostname.includes('qianwen.com')) {
+      return 'qianwen';
+    } else if (hostname.includes('yiyan.baidu.com')) {
+      return 'wenxin';
+    } else if (hostname.includes('chatglm.cn')) {
+      return 'zhipu';
+    } else if (hostname.includes('doubao.com')) {
+      return 'doubao';
+    } else if (hostname.includes('yuanbao.tencent.com')) {
+      return 'yuanbao';
+    } else if (hostname.includes('xinghuo.xfyun.cn')) {
+      return 'xinghuo';
+    } else if (hostname.includes('metaso.cn')) {
+      return 'metaso';
+    } else if (hostname === 'www.n.cn' || hostname === 'n.cn') {
+      return 'nami';
+    } else if (hostname.includes('tiangong.cn')) {
+      return 'tiangong';
     }
     return null;
   }
@@ -77,7 +80,10 @@
         const newValue = currentValue + text;
 
         // For React - use native setter to bypass React's control
-        const nativeInputValueSetter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value').set;
+        const prototype = element.tagName === 'TEXTAREA'
+          ? window.HTMLTextAreaElement.prototype
+          : window.HTMLInputElement.prototype;
+        const nativeInputValueSetter = Object.getOwnPropertyDescriptor(prototype, 'value').set;
         nativeInputValueSetter.call(element, newValue);
 
         // Trigger multiple events to notify React/Vue/etc

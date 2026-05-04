@@ -13,17 +13,19 @@ describe('providers module', () => {
 
   describe('PROVIDERS constant', () => {
     it('should contain all expected providers', () => {
-      expect(PROVIDERS).toHaveLength(8);
+      expect(PROVIDERS).toHaveLength(10);
       const providerIds = PROVIDERS.map((p) => p.id);
       expect(providerIds).toEqual([
-        'chatgpt',
-        'perplexity',
-        'claude',
-        'gemini',
-        'google',
-        'grok',
-        'copilot',
-        'deepseek',
+        'kimi',
+        'qianwen',
+        'wenxin',
+        'zhipu',
+        'doubao',
+        'yuanbao',
+        'xinghuo',
+        'metaso',
+        'nami',
+        'tiangong',
       ]);
     });
 
@@ -41,11 +43,11 @@ describe('providers module', () => {
 
   describe('getProviderById', () => {
     it('should return provider by id', () => {
-      const provider = getProviderById('chatgpt');
+      const provider = getProviderById('kimi');
 
       expect(provider).toBeDefined();
-      expect(provider.id).toBe('chatgpt');
-      expect(provider.name).toBe('ChatGPT');
+      expect(provider.id).toBe('kimi');
+      expect(provider.name).toBe('Kimi');
     });
 
     it('should return undefined for non-existent provider', () => {
@@ -59,10 +61,10 @@ describe('providers module', () => {
     it('should return provider with default URL', async () => {
       chrome.storage.sync.get.mockResolvedValue({});
 
-      const provider = await getProviderByIdWithSettings('chatgpt');
+      const provider = await getProviderByIdWithSettings('kimi');
 
       expect(provider).toBeDefined();
-      expect(provider.url).toBe('https://chatgpt.com');
+      expect(provider.url).toBe('https://www.kimi.com/');
     });
 
     it('should return null for non-existent provider', async () => {
@@ -75,14 +77,14 @@ describe('providers module', () => {
   describe('getEnabledProviders', () => {
     it('should return enabled providers from settings', async () => {
       chrome.storage.sync.get.mockResolvedValue({
-        enabledProviders: ['chatgpt', 'claude'],
+        enabledProviders: ['kimi', 'qianwen'],
       });
 
       const providers = await getEnabledProviders();
 
       expect(providers).toHaveLength(2);
-      expect(providers[0].id).toBe('chatgpt');
-      expect(providers[1].id).toBe('claude');
+      expect(providers[0].id).toBe('kimi');
+      expect(providers[1].id).toBe('qianwen');
     });
 
     it('should use default settings when not provided', async () => {

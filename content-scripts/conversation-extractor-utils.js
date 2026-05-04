@@ -1,6 +1,6 @@
 // Shared Utilities for Conversation Extractors
 // Common functions used across all AI provider history extractors
-// This module eliminates duplication across ChatGPT, Claude, Gemini, Grok, DeepSeek, and Perplexity extractors
+// This module eliminates duplication across provider history extractors
 //
 // NOTE: This file must be loaded BEFORE any *-history-extractor.js files in manifest.json
 // It exports functions to window.ConversationExtractorUtils
@@ -164,16 +164,17 @@
       if (!['http:', 'https:'].includes(url.protocol)) return '';
 
       const blockedHosts = [
-        'chatgpt.com',
-        'chat.openai.com',
-        'claude.ai',
-        'gemini.google.com',
-        'grok.com',
-        'chat.deepseek.com',
-        'www.perplexity.ai',
-        'perplexity.ai',
-        'www.google.com',
-        'google.com'
+        'www.kimi.com',
+        'www.qianwen.com',
+        'yiyan.baidu.com',
+        'chatglm.cn',
+        'www.doubao.com',
+        'yuanbao.tencent.com',
+        'xinghuo.xfyun.cn',
+        'metaso.cn',
+        'www.n.cn',
+        'n.cn',
+        'www.tiangong.cn'
       ];
       const hostname = url.hostname.replace(/^www\./, '');
 
@@ -209,8 +210,6 @@
       const targetDomain = url.hostname.replace(/^www\./, '');
 
       if (targetDomain === currentDomain) return false;
-      if (['accounts.google.com', 'support.google.com'].includes(targetDomain)) return false;
-
       return true;
     } catch (error) {
       return false;
@@ -400,24 +399,7 @@
   window.ConversationExtractorUtils.generateConversationId = function(url, title) {
   // Prefer URL-based ID for uniqueness and reliability
   if (url) {
-    // Google AI Mode: Use normalized query parameter only
-    if (url.includes('google.com/search') && url.includes('udm=50')) {
-      try {
-        const urlObj = new URL(url);
-        const query = urlObj.searchParams.get('q');
-        if (query) {
-          // Normalize query: lowercase, trim, collapse spaces
-          const normalized = query.toLowerCase().trim().replace(/\s+/g, ' ');
-          return `google-ai-${normalized}`;
-        }
-      } catch (e) {
-        console.error('[Extractor Utils] Error parsing Google AI URL:', e);
-      }
-    }
-
     // Extract conversation ID from URL if present
-    // ChatGPT: https://chatgpt.com/c/abc123
-    // Claude: https://claude.ai/chat/abc-123
     const urlMatch = url.match(/\/(c|chat)\/([a-zA-Z0-9-]+)/);
     if (urlMatch) {
       return urlMatch[2];

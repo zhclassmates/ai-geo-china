@@ -3,7 +3,7 @@
     "message": "insidebar.ai - local exporter"
   },
   "extensionDescription": {
-    "message": "Estensione barra laterale multi-IA per accesso rapido a ChatGPT, Claude, Gemini e altro"
+    "message": "Domestic AI sidebar extension for Kimi, Qianwen, Wenxin, and more"
   },
   "commandOpenSidebar": {
     "message": "Apri insidebar.ai con provider predefinito"
@@ -179,7 +179,7 @@
     "message": "Personalizza come funzionano il tasto Invio e i tasti modificatori durante la digitazione nei campi di input dei provider IA."
   },
   "descEnterBehavior2": {
-    "message": "<strong>Si applica a:</strong> ChatGPT, Claude, Gemini, Google (Modalità IA), Grok, DeepSeek e Perplexity."
+    "message": "<strong>Applies to:</strong> enabled domestic AI providers."
   },
   "labelEnableEnterCustomization": {
     "message": "Abilita personalizzazione tasto Invio"

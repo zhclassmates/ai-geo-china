@@ -3,7 +3,7 @@
     "message": "insidebar.ai - local exporter"
   },
   "extensionDescription": {
-    "message": "Multi-KI-Seitenleisten-Erweiterung für schnellen Zugriff auf ChatGPT, Claude, Gemini und mehr"
+    "message": "Domestic AI sidebar extension for Kimi, Qianwen, Wenxin, and more"
   },
   "commandOpenSidebar": {
     "message": "insidebar.ai mit Standard-Anbieter öffnen"
@@ -179,7 +179,7 @@
     "message": "Passen Sie an, wie die Enter-Taste und Modifikatortasten funktionieren, wenn Sie in KI-Anbieter-Eingabefeldern tippen."
   },
   "descEnterBehavior2": {
-    "message": "<strong>Gilt für:</strong> ChatGPT, Claude, Gemini, Google (KI-Modus), Grok, DeepSeek und Perplexity."
+    "message": "<strong>Applies to:</strong> enabled domestic AI providers."
   },
   "labelEnableEnterCustomization": {
     "message": "Enter-Tasten-Anpassung aktivieren"

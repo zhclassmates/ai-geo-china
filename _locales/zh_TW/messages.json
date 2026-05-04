@@ -3,7 +3,7 @@
     "message": "insidebar.ai - local exporter"
   },
   "extensionDescription": {
-    "message": "多 AI 側邊欄擴充功能，快速存取 ChatGPT、Claude、Gemini 等"
+    "message": "國內 AI 側邊欄擴充功能，快速存取 Kimi、千問、文心一言等"
   },
   "commandOpenSidebar": {
     "message": "使用預設提供者開啟 insidebar.ai"
@@ -172,7 +172,7 @@
     "message": "自訂在 AI 提供者輸入欄位中輸入時 Enter 鍵和修飾鍵的工作方式。"
   },
   "descEnterBehavior2": {
-    "message": "<strong>適用於:</strong> ChatGPT、Claude、Gemini、Google(AI 模式)、Grok、DeepSeek 和 Perplexity。"
+    "message": "<strong>適用於:</strong> 已啟用的國內 AI 平台。"
   },
   "labelEnableEnterCustomization": {
     "message": "啟用 Enter 鍵自訂"

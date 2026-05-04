@@ -1,83 +1,116 @@
+export const DEFAULT_ENABLED_PROVIDER_IDS = [
+  'kimi',
+  'qianwen',
+  'wenxin',
+  'zhipu',
+  'doubao',
+  'yuanbao',
+  'xinghuo',
+  'metaso',
+  'nami',
+  'tiangong'
+];
+
 export const PROVIDERS = [
   {
-    id: 'chatgpt',
-    name: 'ChatGPT',
-    url: 'https://chatgpt.com',
-    icon: '/icons/providers/chatgpt.png',
-    iconDark: '/icons/providers/dark/chatgpt.png',
-    enabled: true,
-    supportsCitations: true,
-    citationStrategy: 'chatgpt_sources_panel'
-  },
-  {
-    id: 'perplexity',
-    name: 'Perplexity',
-    url: 'https://www.perplexity.ai',
-    icon: '/icons/providers/perplexity.png',
-    iconDark: '/icons/providers/dark/perplexity.png',
-    enabled: true,
-    supportsCitations: true,
-    citationStrategy: 'visible_citation_links'
-  },
-  {
-    id: 'claude',
-    name: 'Claude',
-    url: 'https://claude.ai',
-    icon: '/icons/providers/claude.png',
-    iconDark: '/icons/providers/dark/claude.png',
-    enabled: true,
-    supportsCitations: false,
-    citationStrategy: 'none'
-  },
-  {
-    id: 'gemini',
-    name: 'Gemini',
-    url: 'https://gemini.google.com',
-    icon: '/icons/providers/gemini.png',
-    iconDark: '/icons/providers/dark/gemini.png',
-    enabled: true,
-    supportsCitations: 'partial',
-    citationStrategy: 'links_and_grounding_cards'
-  },
-  {
-    id: 'google',
-    name: 'Google AI Mode',
-    url: 'https://www.google.com/search?udm=50',
-    icon: '/icons/providers/google.png',
-    iconDark: '/icons/providers/dark/google.png',
-    enabled: true,
-    supportsCitations: true,
-    citationStrategy: 'ai_mode_source_cards'
-  },
-  {
-    id: 'grok',
-    name: 'Grok',
-    url: 'https://grok.com',
-    icon: '/icons/providers/grok.png',
-    iconDark: '/icons/providers/dark/grok.png',
-    enabled: true,
-    supportsCitations: false,
-    citationStrategy: 'none'
-  },
-  {
-    id: 'copilot',
-    name: 'Microsoft Copilot',
-    url: 'https://copilot.microsoft.com',
-    icon: '/icons/providers/copilot.png',
-    iconDark: '/icons/providers/dark/copilot.png',
+    id: 'kimi',
+    name: 'Kimi',
+    url: 'https://www.kimi.com/',
+    icon: '/icons/providers/kimi.png',
+    iconDark: '/icons/providers/dark/kimi.png',
     enabled: true,
     supportsCitations: 'partial',
     citationStrategy: 'visible_citation_links'
   },
   {
-    id: 'deepseek',
-    name: 'DeepSeek',
-    url: 'https://chat.deepseek.com',
-    icon: '/icons/providers/deepseek.png',
-    iconDark: '/icons/providers/dark/deepseek.png',
+    id: 'qianwen',
+    name: '千问',
+    url: 'https://www.qianwen.com/chat',
+    icon: '/icons/providers/qianwen.png',
+    iconDark: '/icons/providers/dark/qianwen.png',
     enabled: true,
-    supportsCitations: false,
-    citationStrategy: 'none'
+    supportsCitations: 'partial',
+    citationStrategy: 'visible_citation_links'
+  },
+  {
+    id: 'wenxin',
+    name: '文心一言',
+    url: 'https://yiyan.baidu.com/',
+    icon: '/icons/providers/wenxin.png',
+    iconDark: '/icons/providers/dark/wenxin.png',
+    enabled: true,
+    supportsCitations: 'partial',
+    citationStrategy: 'visible_citation_links'
+  },
+  {
+    id: 'zhipu',
+    name: '智谱清言',
+    url: 'https://chatglm.cn/',
+    icon: '/icons/providers/zhipu.png',
+    iconDark: '/icons/providers/dark/zhipu.png',
+    enabled: true,
+    supportsCitations: 'partial',
+    citationStrategy: 'visible_citation_links'
+  },
+  {
+    id: 'doubao',
+    name: '豆包',
+    url: 'https://www.doubao.com/chat/',
+    icon: '/icons/providers/doubao.png',
+    iconDark: '/icons/providers/dark/doubao.png',
+    enabled: true,
+    supportsCitations: 'partial',
+    citationStrategy: 'visible_citation_links'
+  },
+  {
+    id: 'yuanbao',
+    name: '腾讯元宝',
+    url: 'https://yuanbao.tencent.com/chat/',
+    icon: '/icons/providers/yuanbao.png',
+    iconDark: '/icons/providers/dark/yuanbao.png',
+    enabled: true,
+    supportsCitations: 'partial',
+    citationStrategy: 'visible_citation_links'
+  },
+  {
+    id: 'xinghuo',
+    name: '讯飞星火',
+    url: 'https://xinghuo.xfyun.cn/',
+    icon: '/icons/providers/xinghuo.png',
+    iconDark: '/icons/providers/dark/xinghuo.png',
+    enabled: true,
+    supportsCitations: 'partial',
+    citationStrategy: 'visible_citation_links'
+  },
+  {
+    id: 'metaso',
+    name: '秘塔 AI 搜索',
+    url: 'https://metaso.cn/',
+    icon: '/icons/providers/metaso.png',
+    iconDark: '/icons/providers/dark/metaso.png',
+    enabled: true,
+    supportsCitations: true,
+    citationStrategy: 'visible_citation_links'
+  },
+  {
+    id: 'nami',
+    name: '纳米 AI',
+    url: 'https://www.n.cn/',
+    icon: '/icons/providers/nami.png',
+    iconDark: '/icons/providers/dark/nami.png',
+    enabled: true,
+    supportsCitations: 'partial',
+    citationStrategy: 'visible_citation_links'
+  },
+  {
+    id: 'tiangong',
+    name: '天工 AI',
+    url: 'https://www.tiangong.cn/',
+    icon: '/icons/providers/tiangong.png',
+    iconDark: '/icons/providers/dark/tiangong.png',
+    enabled: true,
+    supportsCitations: 'partial',
+    citationStrategy: 'visible_citation_links'
   }
 ];
 
@@ -94,7 +127,7 @@ export async function getProviderByIdWithSettings(id) {
 
 export async function getEnabledProviders() {
   const settings = await chrome.storage.sync.get({
-    enabledProviders: ['chatgpt', 'perplexity', 'claude', 'gemini', 'google', 'grok', 'copilot', 'deepseek']
+    enabledProviders: DEFAULT_ENABLED_PROVIDER_IDS
   });
 
   return PROVIDERS

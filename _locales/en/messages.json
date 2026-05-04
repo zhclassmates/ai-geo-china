@@ -3,7 +3,7 @@
     "message": "insidebar.ai - local exporter"
   },
   "extensionDescription": {
-    "message": "Multi-AI sidebar extension for quick access to ChatGPT, Claude, Gemini, and more"
+    "message": "Domestic AI sidebar extension for Kimi, Qianwen, Wenxin, and more"
   },
   "commandOpenSidebar": {
     "message": "Open insidebar.ai with default provider"
@@ -179,7 +179,7 @@
     "message": "Customize how Enter and modifier keys work when typing in AI provider input fields."
   },
   "descEnterBehavior2": {
-    "message": "<strong>Applies to:</strong> ChatGPT, Claude, Gemini, Google (AI Mode), Grok, DeepSeek, and Perplexity."
+    "message": "<strong>Applies to:</strong> enabled domestic AI providers."
   },
   "labelEnableEnterCustomization": {
     "message": "Enable Enter Key Customization"

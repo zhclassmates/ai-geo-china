@@ -1,5 +1,5 @@
 // T050-T064: Settings Page Implementation
-import { PROVIDERS } from '../modules/providers.js';
+import { DEFAULT_ENABLED_PROVIDER_IDS, PROVIDERS } from '../modules/providers.js';
 import { getSettings, getSetting, saveSettings, saveSetting, resetSettings, exportSettings, importSettings } from '../modules/settings.js';
 import { applyTheme } from '../modules/theme-manager.js';
 import {
@@ -20,7 +20,7 @@ import {
   checkForUpdates
 } from '../modules/version-checker.js';
 import { t, translatePage, getCurrentLanguage, initializeLanguage } from '../modules/i18n.js';
-const DEFAULT_ENABLED_PROVIDERS = ['chatgpt', 'perplexity', 'claude', 'gemini', 'google', 'grok', 'deepseek', 'copilot'];
+const DEFAULT_ENABLED_PROVIDERS = DEFAULT_ENABLED_PROVIDER_IDS;
 
 // Helper function to get browser's current language in our supported format
 function getCurrentBrowserLanguage() {
@@ -317,7 +317,7 @@ async function updateDefaultProviderDropdown() {
   const settings = await getSettings();
   const enabledProviders = getEnabledProvidersOrDefault(settings);
   const dropdown = document.getElementById('default-provider-select');
-  const currentDefault = settings.defaultProvider || 'chatgpt';
+  const currentDefault = settings.defaultProvider || 'kimi';
 
   // Clear existing options
   dropdown.innerHTML = '';

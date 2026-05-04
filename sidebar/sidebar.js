@@ -308,8 +308,8 @@ function createProviderIframe(provider) {
 // T017: Load default or last selected provider
 async function loadDefaultProvider() {
   const settings = await chrome.storage.sync.get({
-    lastSelectedProvider: 'chatgpt',
-    defaultProvider: 'chatgpt',
+    lastSelectedProvider: 'kimi',
+    defaultProvider: 'kimi',
     rememberLastProvider: true
   });
 
@@ -365,7 +365,7 @@ function setupMessageListener() {
           window.close();
           sendResponse({ success: true });
         } else if (message.action === 'saveExtractedConversation') {
-          // Handle extracted conversation from ChatGPT page
+          // Handle extracted conversation from provider pages
           await handleExtractedConversation(message.payload);
           sendResponse({ success: true });
         } else if (message.action === 'checkDuplicateConversation') {
@@ -826,7 +826,7 @@ async function renderGeoDashboard() {
       <div class="geo-empty">
         <p><span class="material-symbols-outlined" style="font-size: 44px; opacity: 0.45;">query_stats</span></p>
         <p>No GEO runs yet</p>
-        <p>Open ChatGPT, Perplexity, or Google AI Mode, then save an answer with citations.</p>
+        <p>Open a domestic AI provider, then save an answer with citations.</p>
       </div>
     `;
     return;
@@ -1939,11 +1939,8 @@ async function updateProviderFilter() {
   const enabledProviders = await getEnabledProviders();
   const popup = document.getElementById('provider-popup');
 
-  // Filter out DeepSeek since we don't have a reliable extractor for it
-  const filterableProviders = enabledProviders.filter(p => p.id !== 'deepseek');
-
   popup.innerHTML = '<div class="provider-popup-item selected" data-value="">All Providers</div>' +
-    filterableProviders.map(provider =>
+    enabledProviders.map(provider =>
       `<div class="provider-popup-item" data-value="${escapeHtml(provider.id)}">${escapeHtml(provider.name)}</div>`
     ).join('');
 }
@@ -1994,7 +1991,7 @@ async function saveConversationFromModal() {
   }
 }
 
-// Handle extracted conversation from ChatGPT content script
+// Handle extracted conversation from provider content scripts
 async function handleExtractedConversation(conversationData) {
   try {
     // Switch to chat history view
@@ -2003,7 +2000,7 @@ async function handleExtractedConversation(conversationData) {
     const conversationToSave = {
       title: conversationData.title || generateAutoTitle(conversationData.content),
       content: conversationData.content,
-      provider: conversationData.provider || 'ChatGPT',
+      provider: conversationData.provider || 'kimi',
       timestamp: conversationData.timestamp || Date.now(),
       tags: [],
       notes: conversationData.url ? `Extracted from: ${conversationData.url}` : '',
