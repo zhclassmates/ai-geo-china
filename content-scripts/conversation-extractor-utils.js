@@ -189,6 +189,25 @@
     }
   };
 
+  const NON_CITATION_HOST_PATTERNS = [
+    /(^|\.)doubao\.com$/,
+    /(^|\.)byteacctimg\.com$/,
+    /(^|\.)byteimg\.com$/,
+    /(^|\.)bytednsdoc\.com$/,
+    /(^|\.)ibytedapm\.com$/,
+    /(^|\.)bytescm\.com$/,
+    /(^|\.)bytedance\.com$/,
+    /(^|\.)lf-flow-web-cdn\.doubao\.com$/,
+    /tos-cn-/,
+    /passport/,
+    /favicon/,
+    /avatar/
+  ];
+
+  function isNonCitationAssetHost(hostname) {
+    return NON_CITATION_HOST_PATTERNS.some(pattern => pattern.test(hostname));
+  }
+
   window.ConversationExtractorUtils.isRealExternalUrl = function isRealExternalUrl(rawUrl) {
     const normalizedUrl = window.ConversationExtractorUtils.normalizeCitationUrl(rawUrl);
     if (!normalizedUrl) return false;
@@ -200,6 +219,7 @@
       const targetDomain = url.hostname.replace(/^www\./, '');
 
       if (targetDomain === currentDomain) return false;
+      if (isNonCitationAssetHost(targetDomain)) return false;
       return true;
     } catch (error) {
       return false;

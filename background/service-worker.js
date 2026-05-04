@@ -398,13 +398,22 @@ async function handleCheckDuplicate(payload) {
 // Handle saving conversation - now with direct database access
 async function handleSaveConversation(conversationData, sender) {
   try {
+    const payload = {
+      ...conversationData,
+      tabId: conversationData.tabId || sender?.tab?.id || null,
+      rawEvidence: {
+        ...(conversationData.rawEvidence || {}),
+        tabId: conversationData.rawEvidence?.tabId || sender?.tab?.id || null
+      }
+    };
+
     // Save directly to IndexedDB without requiring sidebar
-    const savedConversation = await saveConversation(conversationData);
+    const savedConversation = await saveConversation(payload);
     let savedGeoRun = null;
 
-    if (conversationData.type === 'geo_run' || Array.isArray(conversationData.citations)) {
+    if (payload.type === 'geo_run' || Array.isArray(payload.citations)) {
       const geoRunResponse = await handleSaveGeoRun({
-        ...conversationData,
+        ...payload,
         conversationId: savedConversation.id
       }, sender);
 
@@ -590,7 +599,16 @@ function normalizeCitation(citation, index, project) {
     domain,
     title: sanitizeText(citation.title || domain, 160),
     anchorText: sanitizeText(citation.anchorText || citation.title || domain, 240),
+    sourceName: sanitizeText(citation.sourceName || '', 120),
+    snippet: sanitizeText(citation.snippet || '', 500),
     position: citation.position || index + 1,
+    visibleRank: citation.visibleRank || citation.position || index + 1,
+    originalDocRank: citation.originalDocRank ?? '',
+    publishTime: citation.publishTime || '',
+    docId: citation.docId || '',
+    searchId: citation.searchId || '',
+    sourcePanel: citation.sourcePanel || '',
+    extractionMethod: citation.extractionMethod || '',
     sourceType: citation.sourceType || classifySourceType(domain, citation.title, citation.anchorText),
     sourceRole: isTargetDomain ? 'target' : isCompetitorDomain ? 'competitor' : 'third_party',
     isTargetDomain,

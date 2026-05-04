@@ -500,17 +500,45 @@ async function injectTextIntoProvider(providerId, text) {
       return;
     }
 
+    const geoRun = createProviderRunContext(providerId, text);
+
     // Send message to content script inside the iframe
     iframe.contentWindow.postMessage(
       {
         type: 'INJECT_TEXT',
-        text: text
+        text: text,
+        geoRun
       },
       '*' // We're posting to same-origin AI provider domains
     );
   } catch (error) {
     console.error('Error sending text injection message:', error);
   }
+}
+
+function createProviderRunContext(providerId, prompt) {
+  const startedAt = Date.now();
+
+  return {
+    runId: crypto.randomUUID(),
+    provider: providerId,
+    prompt,
+    promptHash: hashPrompt(prompt),
+    startedAt,
+    status: 'running'
+  };
+}
+
+function hashPrompt(value) {
+  const text = String(value || '').replace(/\s+/g, ' ').trim();
+  let hash = 2166136261;
+
+  for (let index = 0; index < text.length; index += 1) {
+    hash ^= text.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+
+  return (hash >>> 0).toString(16).padStart(8, '0');
 }
 
 // T019: Show/hide error message

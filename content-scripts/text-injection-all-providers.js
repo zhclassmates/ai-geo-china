@@ -18,23 +18,70 @@
     return null;
   }
 
-  function rememberLastProduct(provider, text) {
+  function rememberLastProduct(provider, text, runContext = null) {
     const product = text.trim();
     if (!product) return;
 
+    const run = normalizeRunContext(provider, product, runContext);
     const payload = JSON.stringify({
       provider,
       product,
       timestamp: Date.now(),
-      url: window.location.href
+      url: window.location.href,
+      runId: run.runId,
+      promptHash: run.promptHash,
+      startedAt: run.startedAt
     });
 
     try {
       sessionStorage.setItem('insidebarLastProduct', payload);
       localStorage.setItem('insidebarLastProduct', payload);
+      sessionStorage.setItem('insidebarActiveDoubaoRun', JSON.stringify(run));
+      localStorage.setItem('insidebarActiveDoubaoRun', JSON.stringify(run));
     } catch (error) {
       window.__insidebarLastProduct = payload;
+      window.__insidebarActiveDoubaoRun = run;
     }
+
+    broadcastRunStart(run);
+  }
+
+  function normalizeRunContext(provider, prompt, runContext) {
+    const startedAt = Number(runContext?.startedAt || Date.now());
+
+    return {
+      runId: String(runContext?.runId || crypto.randomUUID()),
+      provider,
+      prompt,
+      promptHash: String(runContext?.promptHash || hashPrompt(prompt)),
+      startedAt,
+      conversationUrl: window.location.href,
+      status: 'running'
+    };
+  }
+
+  function broadcastRunStart(run) {
+    try {
+      window.postMessage({
+        source: 'AI_GEO_RUN_BINDING',
+        type: 'doubao_run_started',
+        payload: run
+      }, '*');
+    } catch (error) {
+      console.warn('[Text Injection] Failed to broadcast run context:', error);
+    }
+  }
+
+  function hashPrompt(value) {
+    const text = String(value || '').replace(/\s+/g, ' ').trim();
+    let hash = 2166136261;
+
+    for (let index = 0; index < text.length; index += 1) {
+      hash ^= text.charCodeAt(index);
+      hash = Math.imul(hash, 16777619);
+    }
+
+    return (hash >>> 0).toString(16).padStart(8, '0');
   }
 
   // Find text input element by selector
@@ -126,6 +173,7 @@
 
     // Validate text payload
     const text = event.data.text;
+    const runContext = event.data.geoRun || null;
     if (!text || typeof text !== 'string' || text.length === 0) {
       console.warn('[Text Injection] Invalid text payload');
       return;
@@ -159,7 +207,7 @@
     if (element) {
       const success = injectTextIntoElement(element, text);
       if (success) {
-        rememberLastProduct(provider, text);
+        rememberLastProduct(provider, text, runContext);
       }
       if (!success) {
         console.error(`[Text Injection] Failed to inject text into ${provider}`);
@@ -176,7 +224,7 @@
         }
         if (retryElement) {
           if (injectTextIntoElement(retryElement, text)) {
-            rememberLastProduct(provider, text);
+            rememberLastProduct(provider, text, runContext);
           }
         } else {
           console.error(`[Text Injection] ${provider} editor not found`);
