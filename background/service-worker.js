@@ -495,9 +495,15 @@ async function handleSaveGeoRun(payload, sender) {
 async function handleAnalyzeGeoRun(payload) {
   try {
     const project = payload.project || await getDefaultGeoProject();
-    const citations = normalizeAndClassifyCitations(payload.citations || [], project);
+    const citations = normalizeAndClassifyCitations(filterStrictDoubaoCitations(payload), project);
     const answerText = payload.answerText || payload.answerMarkdown || extractAssistantAnswer(payload.messages) || payload.content || '';
-    const query = payload.query || extractLastUserQuery(payload.messages) || payload.title || '';
+    const query = payload.actualQuery ||
+      payload.query ||
+      payload.rawEvidence?.userQuestion ||
+      extractLastUserQuery(payload.messages) ||
+      payload.rawEvidence?.conversationName ||
+      payload.title ||
+      '';
     const mentions = extractMentions(answerText, project);
     const rankings = extractRankings(mentions);
     const sentiment = calculateOverallSentiment(mentions);
@@ -529,6 +535,46 @@ async function handleAnalyzeGeoRun(payload) {
     console.error('[Background] Error analyzing GEO run:', error);
     return { success: false, error: error.message };
   }
+}
+
+function filterStrictDoubaoCitations(payload = {}) {
+  const citations = Array.isArray(payload.citations) ? payload.citations : [];
+  if (payload.provider !== 'doubao') return citations;
+
+  const answerMessageId = payload.rawEvidence?.answerMessageId || '';
+
+  return citations.filter(citation => {
+    if (!citation?.url) return false;
+    if (citation.evidenceType !== 'network_search_result') return false;
+    if (citation.sourcePanel !== 'doubao_same_message_search_result') return false;
+    if (answerMessageId && citation.messageId && citation.messageId !== answerMessageId) return false;
+    return !isPlatformAssetUrl(citation.url);
+  });
+}
+
+function isPlatformAssetUrl(url) {
+  let host = '';
+
+  try {
+    host = new URL(url).hostname.replace(/^www\./, '');
+  } catch (error) {
+    return true;
+  }
+
+  return [
+    /(^|\.)doubao\.com$/,
+    /(^|\.)byteimg\.com$/,
+    /(^|\.)byteacctimg\.com$/,
+    /(^|\.)ibytedapm\.com$/,
+    /(^|\.)bytednsdoc\.com$/,
+    /(^|\.)yhgfb-cn-static\.com$/,
+    /(^|\.)w3\.org$/,
+    /lf-flow-web-cdn/,
+    /passport/,
+    /favicon/,
+    /avatar/,
+    /imagex-sign/
+  ].some(pattern => pattern.test(host));
 }
 
 async function handleFetchCitationPage(payload) {
@@ -608,7 +654,10 @@ function normalizeCitation(citation, index, project) {
     docId: citation.docId || '',
     searchId: citation.searchId || '',
     sourcePanel: citation.sourcePanel || '',
+    evidenceType: citation.evidenceType || '',
     extractionMethod: citation.extractionMethod || '',
+    conversationId: citation.conversationId || '',
+    messageId: citation.messageId || '',
     sourceType: citation.sourceType || classifySourceType(domain, citation.title, citation.anchorText),
     sourceRole: isTargetDomain ? 'target' : isCompetitorDomain ? 'competitor' : 'third_party',
     isTargetDomain,
