@@ -1,4 +1,4 @@
-// Text injection handler for all AI providers
+// Text injection handler for Doubao
 // Self-contained script without module imports (for iframe compatibility)
 
 (function() {
@@ -6,43 +6,35 @@
 
   // Provider-specific selectors
   const PROVIDER_SELECTORS = {
-    kimi: ['textarea', '[contenteditable="true"]', '.ProseMirror', '[role="textbox"]'],
-    qianwen: ['textarea', '[contenteditable="true"]', '.ProseMirror', '[role="textbox"]'],
-    wenxin: ['textarea', '[contenteditable="true"]', '.ProseMirror', '[role="textbox"]'],
-    zhipu: ['textarea', '[contenteditable="true"]', '.ProseMirror', '[role="textbox"]'],
-    doubao: ['textarea', '[contenteditable="true"]', '.ProseMirror', '[role="textbox"]'],
-    yuanbao: ['textarea', '[contenteditable="true"]', '.ProseMirror', '[role="textbox"]'],
-    xinghuo: ['textarea', '[contenteditable="true"]', '.ProseMirror', '[role="textbox"]'],
-    metaso: ['textarea', '[contenteditable="true"]', '.ProseMirror', '[role="textbox"]'],
-    nami: ['textarea', '[contenteditable="true"]', '.ProseMirror', '[role="textbox"]'],
-    tiangong: ['textarea', '[contenteditable="true"]', '.ProseMirror', '[role="textbox"]']
+    doubao: ['textarea', '[contenteditable="true"]', '.ProseMirror', '[role="textbox"]']
   };
 
   // Detect which provider we're on based on hostname
   function detectProvider() {
     const hostname = window.location.hostname;
-    if (hostname.includes('kimi.com')) {
-      return 'kimi';
-    } else if (hostname.includes('qianwen.com')) {
-      return 'qianwen';
-    } else if (hostname.includes('yiyan.baidu.com')) {
-      return 'wenxin';
-    } else if (hostname.includes('chatglm.cn')) {
-      return 'zhipu';
-    } else if (hostname.includes('doubao.com')) {
+    if (hostname.includes('doubao.com')) {
       return 'doubao';
-    } else if (hostname.includes('yuanbao.tencent.com')) {
-      return 'yuanbao';
-    } else if (hostname.includes('xinghuo.xfyun.cn')) {
-      return 'xinghuo';
-    } else if (hostname.includes('metaso.cn')) {
-      return 'metaso';
-    } else if (hostname === 'www.n.cn' || hostname === 'n.cn') {
-      return 'nami';
-    } else if (hostname.includes('tiangong.cn')) {
-      return 'tiangong';
     }
     return null;
+  }
+
+  function rememberLastProduct(provider, text) {
+    const product = text.trim();
+    if (!product) return;
+
+    const payload = JSON.stringify({
+      provider,
+      product,
+      timestamp: Date.now(),
+      url: window.location.href
+    });
+
+    try {
+      sessionStorage.setItem('insidebarLastProduct', payload);
+      localStorage.setItem('insidebarLastProduct', payload);
+    } catch (error) {
+      window.__insidebarLastProduct = payload;
+    }
   }
 
   // Find text input element by selector
@@ -166,6 +158,9 @@
 
     if (element) {
       const success = injectTextIntoElement(element, text);
+      if (success) {
+        rememberLastProduct(provider, text);
+      }
       if (!success) {
         console.error(`[Text Injection] Failed to inject text into ${provider}`);
       }
@@ -180,7 +175,9 @@
           }
         }
         if (retryElement) {
-          injectTextIntoElement(retryElement, text);
+          if (injectTextIntoElement(retryElement, text)) {
+            rememberLastProduct(provider, text);
+          }
         } else {
           console.error(`[Text Injection] ${provider} editor not found`);
         }

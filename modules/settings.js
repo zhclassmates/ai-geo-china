@@ -9,8 +9,8 @@ const DEFAULT_SETTINGS = {
     competitors: [],
     markets: []
   },
-  defaultProvider: 'kimi',
-  lastSelectedProvider: 'kimi',
+  defaultProvider: 'doubao',
+  lastSelectedProvider: 'doubao',
   rememberLastProvider: true,  // When true, sidebar opens last selected provider; when false, always opens default provider
   theme: 'auto',
   keyboardShortcutEnabled: true,

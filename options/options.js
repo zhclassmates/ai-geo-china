@@ -317,7 +317,7 @@ async function updateDefaultProviderDropdown() {
   const settings = await getSettings();
   const enabledProviders = getEnabledProvidersOrDefault(settings);
   const dropdown = document.getElementById('default-provider-select');
-  const currentDefault = settings.defaultProvider || 'kimi';
+  const currentDefault = settings.defaultProvider || 'doubao';
 
   // Clear existing options
   dropdown.innerHTML = '';

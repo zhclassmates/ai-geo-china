@@ -15,17 +15,7 @@
   ],
 
   "host_permissions": [
-    "*://www.kimi.com/*",
-    "*://www.qianwen.com/*",
-    "*://yiyan.baidu.com/*",
-    "*://chatglm.cn/*",
     "*://www.doubao.com/*",
-    "*://yuanbao.tencent.com/*",
-    "*://xinghuo.xfyun.cn/*",
-    "*://metaso.cn/*",
-    "*://www.n.cn/*",
-    "*://n.cn/*",
-    "*://www.tiangong.cn/*",
     "*://api.github.com/*"
   ],
 
@@ -91,17 +81,7 @@
   "content_scripts": [
     {
       "matches": [
-        "https://www.kimi.com/*",
-        "https://www.qianwen.com/*",
-        "https://yiyan.baidu.com/*",
-        "https://chatglm.cn/*",
-        "https://www.doubao.com/*",
-        "https://yuanbao.tencent.com/*",
-        "https://xinghuo.xfyun.cn/*",
-        "https://metaso.cn/*",
-        "https://www.n.cn/*",
-        "https://n.cn/*",
-        "https://www.tiangong.cn/*"
+        "https://www.doubao.com/*"
       ],
       "js": [
         "content-scripts/button-finder-utils.js",

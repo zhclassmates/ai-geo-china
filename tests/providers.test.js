@@ -13,19 +13,10 @@ describe('providers module', () => {
 
   describe('PROVIDERS constant', () => {
     it('should contain all expected providers', () => {
-      expect(PROVIDERS).toHaveLength(10);
+      expect(PROVIDERS).toHaveLength(1);
       const providerIds = PROVIDERS.map((p) => p.id);
       expect(providerIds).toEqual([
-        'kimi',
-        'qianwen',
-        'wenxin',
-        'zhipu',
         'doubao',
-        'yuanbao',
-        'xinghuo',
-        'metaso',
-        'nami',
-        'tiangong',
       ]);
     });
 
@@ -43,11 +34,11 @@ describe('providers module', () => {
 
   describe('getProviderById', () => {
     it('should return provider by id', () => {
-      const provider = getProviderById('kimi');
+      const provider = getProviderById('doubao');
 
       expect(provider).toBeDefined();
-      expect(provider.id).toBe('kimi');
-      expect(provider.name).toBe('Kimi');
+      expect(provider.id).toBe('doubao');
+      expect(provider.name).toBe('豆包');
     });
 
     it('should return undefined for non-existent provider', () => {
@@ -61,10 +52,10 @@ describe('providers module', () => {
     it('should return provider with default URL', async () => {
       chrome.storage.sync.get.mockResolvedValue({});
 
-      const provider = await getProviderByIdWithSettings('kimi');
+      const provider = await getProviderByIdWithSettings('doubao');
 
       expect(provider).toBeDefined();
-      expect(provider.url).toBe('https://www.kimi.com/');
+      expect(provider.url).toBe('https://www.doubao.com/chat/');
     });
 
     it('should return null for non-existent provider', async () => {
@@ -77,14 +68,13 @@ describe('providers module', () => {
   describe('getEnabledProviders', () => {
     it('should return enabled providers from settings', async () => {
       chrome.storage.sync.get.mockResolvedValue({
-        enabledProviders: ['kimi', 'qianwen'],
+        enabledProviders: ['doubao'],
       });
 
       const providers = await getEnabledProviders();
 
-      expect(providers).toHaveLength(2);
-      expect(providers[0].id).toBe('kimi');
-      expect(providers[1].id).toBe('qianwen');
+      expect(providers).toHaveLength(1);
+      expect(providers[0].id).toBe('doubao');
     });
 
     it('should use default settings when not provided', async () => {

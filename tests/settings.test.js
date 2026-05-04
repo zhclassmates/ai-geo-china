@@ -17,8 +17,8 @@ describe('settings module', () => {
   describe('getSettings', () => {
     it('should return settings from chrome.storage.sync', async () => {
       const mockSettings = {
-        enabledProviders: ['kimi', 'qianwen'],
-        defaultProvider: 'kimi',
+        enabledProviders: ['doubao'],
+        defaultProvider: 'doubao',
         theme: 'dark',
       };
 
@@ -44,7 +44,7 @@ describe('settings module', () => {
     it('should return specific setting value', async () => {
       chrome.storage.sync.get.mockResolvedValue({
         theme: 'dark',
-        defaultProvider: 'qianwen',
+        defaultProvider: 'doubao',
       });
 
       const result = await getSetting('theme');
@@ -73,7 +73,7 @@ describe('settings module', () => {
     it('should save multiple settings', async () => {
       const settings = {
         theme: 'dark',
-        enabledProviders: ['kimi'],
+        enabledProviders: ['doubao'],
       };
 
       await saveSettings(settings);
@@ -90,7 +90,7 @@ describe('settings module', () => {
       expect(chrome.storage.sync.set).toHaveBeenCalledWith(
         expect.objectContaining({
           enabledProviders: expect.any(Array),
-          defaultProvider: 'kimi',
+          defaultProvider: 'doubao',
           theme: 'auto',
         })
       );
@@ -101,7 +101,7 @@ describe('settings module', () => {
     it('should import valid settings', async () => {
       const settings = {
         theme: 'dark',
-        enabledProviders: ['kimi', 'qianwen'],
+        enabledProviders: ['doubao'],
       };
 
       const result = await importSettings(settings);
@@ -129,7 +129,7 @@ describe('settings module', () => {
     it('should export current settings', async () => {
       const mockSettings = {
         theme: 'dark',
-        enabledProviders: ['kimi'],
+        enabledProviders: ['doubao'],
       };
 
       chrome.storage.sync.get.mockResolvedValue(mockSettings);

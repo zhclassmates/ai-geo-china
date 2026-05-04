@@ -3,7 +3,7 @@
     "message": "insidebar.ai - local exporter"
   },
   "extensionDescription": {
-    "message": "Domestic AI sidebar extension for Kimi, Qianwen, Wenxin, and more"
+    "message": "Doubao-only local AI answer and citation saver"
   },
   "commandOpenSidebar": {
     "message": "Abrir insidebar.ai con proveedor predeterminado"
@@ -179,7 +179,7 @@
     "message": "Personaliza cómo funcionan la tecla Enter y las teclas modificadoras al escribir en los campos de entrada de proveedores de IA."
   },
   "descEnterBehavior2": {
-    "message": "<strong>Applies to:</strong> enabled domestic AI providers."
+    "message": "<strong>Applies to:</strong> Doubao."
   },
   "labelEnableEnterCustomization": {
     "message": "Habilitar Personalización de Tecla Enter"

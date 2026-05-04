@@ -703,6 +703,7 @@ export async function saveGeoRun(geoRunData) {
     promptId: geoRunData.promptId || null,
     conversationId: geoRunData.conversationId || '',
     provider: sanitizeString(geoRunData.provider || 'unknown', 30),
+    product: sanitizeString(geoRunData.product || geoRunData.query || '', MAX_CONTENT_LENGTH),
     query: sanitizeString(geoRunData.query || '', MAX_CONTENT_LENGTH),
     answerText: sanitizeString(geoRunData.answerText || '', MAX_CONTENT_LENGTH),
     answerMarkdown: sanitizeString(geoRunData.answerMarkdown || geoRunData.answerText || '', MAX_CONTENT_LENGTH),

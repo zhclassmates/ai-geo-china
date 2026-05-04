@@ -3,7 +3,7 @@
     "message": "insidebar.ai - local exporter"
   },
   "extensionDescription": {
-    "message": "国内 AI 侧边栏扩展，快速访问 Kimi、千问、文心一言等"
+    "message": "豆包专用的本地 AI 答案与引用源保存工具"
   },
   "commandOpenSidebar": {
     "message": "使用默认提供商打开 insidebar.ai"
@@ -174,7 +174,7 @@
     "message": "自定义在 AI 提供商输入字段中输入时回车键和修饰键的工作方式。"
   },
   "descEnterBehavior2": {
-    "message": "<strong>适用于:</strong> 已启用的国内 AI 平台。"
+    "message": "<strong>适用于:</strong> 豆包。"
   },
   "labelEnableEnterCustomization": {
     "message": "启用回车键自定义"

@@ -1,5 +1,5 @@
-// Generic China AI Platform Conversation Extractor
-// Extracts the visible answer and citation links from domestic AI platforms.
+// Doubao Conversation Extractor
+// Extracts the visible answer and citation links from Doubao.
 //
 // IMPORTANT: Requires conversation-extractor-utils.js and language-detector.js.
 
@@ -19,17 +19,7 @@
   } = window.ConversationExtractorUtils;
 
   const PROVIDERS = {
-    'www.kimi.com': { id: 'kimi', name: 'Kimi' },
-    'www.qianwen.com': { id: 'qianwen', name: '千问' },
-    'yiyan.baidu.com': { id: 'wenxin', name: '文心一言' },
-    'chatglm.cn': { id: 'zhipu', name: '智谱清言' },
-    'www.doubao.com': { id: 'doubao', name: '豆包' },
-    'yuanbao.tencent.com': { id: 'yuanbao', name: '腾讯元宝' },
-    'xinghuo.xfyun.cn': { id: 'xinghuo', name: '讯飞星火' },
-    'metaso.cn': { id: 'metaso', name: '秘塔 AI 搜索' },
-    'www.n.cn': { id: 'nami', name: '纳米 AI' },
-    'n.cn': { id: 'nami', name: '纳米 AI' },
-    'www.tiangong.cn': { id: 'tiangong', name: '天工 AI' }
+    'www.doubao.com': { id: 'doubao', name: '豆包' }
   };
 
   const MESSAGE_SELECTORS = [
@@ -124,7 +114,37 @@
       rect.height > 0;
   }
 
-  function extractQuestion() {
+  function getRememberedProduct() {
+    const raw = [
+      window.__insidebarLastProduct,
+      safeStorageGet(sessionStorage, 'insidebarLastProduct'),
+      safeStorageGet(localStorage, 'insidebarLastProduct')
+    ].find(Boolean);
+
+    if (!raw) return '';
+
+    try {
+      const parsed = JSON.parse(raw);
+      if (parsed.provider !== 'doubao') return '';
+      if (Date.now() - Number(parsed.timestamp || 0) > 24 * 60 * 60 * 1000) return '';
+      return typeof parsed.product === 'string' ? parsed.product.trim() : '';
+    } catch (error) {
+      return '';
+    }
+  }
+
+  function safeStorageGet(storage, key) {
+    try {
+      return storage.getItem(key);
+    } catch (error) {
+      return '';
+    }
+  }
+
+  function extractProduct() {
+    const remembered = getRememberedProduct();
+    if (remembered) return remembered;
+
     const candidates = Array.from(document.querySelectorAll('textarea, input[type="text"], [contenteditable="true"], [role="textbox"]'))
       .filter(isVisibleElement)
       .map(element => (element.value || element.textContent || '').trim())
@@ -153,7 +173,8 @@
     const answerRoot = extractAnswerRoot();
     const answerMarkdown = extractMarkdownFromElement(answerRoot).trim();
     const answerText = answerRoot.innerText?.trim() || answerMarkdown;
-    const query = extractQuestion();
+    const product = extractProduct();
+    const query = product;
     const citations = dedupeCitations([
       ...extractCitationCards(answerRoot),
       ...extractExternalLinks(answerRoot)
@@ -182,6 +203,7 @@
       title: getConversationTitle(provider),
       content: `${formatMessagesAsText(messages)}${sourcesMarkdown}`,
       messages,
+      product,
       query,
       answerText,
       answerMarkdown: answerMarkdown || answerText,

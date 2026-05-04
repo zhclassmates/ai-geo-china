@@ -308,8 +308,8 @@ function createProviderIframe(provider) {
 // T017: Load default or last selected provider
 async function loadDefaultProvider() {
   const settings = await chrome.storage.sync.get({
-    lastSelectedProvider: 'kimi',
-    defaultProvider: 'kimi',
+    lastSelectedProvider: 'doubao',
+    defaultProvider: 'doubao',
     rememberLastProvider: true
   });
 
@@ -826,7 +826,7 @@ async function renderGeoDashboard() {
       <div class="geo-empty">
         <p><span class="material-symbols-outlined" style="font-size: 44px; opacity: 0.45;">query_stats</span></p>
         <p>No GEO runs yet</p>
-        <p>Open a domestic AI provider, then save an answer with citations.</p>
+        <p>Open Doubao, send a product, then save the answer and citations locally.</p>
       </div>
     `;
     return;
@@ -2000,7 +2000,7 @@ async function handleExtractedConversation(conversationData) {
     const conversationToSave = {
       title: conversationData.title || generateAutoTitle(conversationData.content),
       content: conversationData.content,
-      provider: conversationData.provider || 'kimi',
+      provider: conversationData.provider || 'doubao',
       timestamp: conversationData.timestamp || Date.now(),
       tags: [],
       notes: conversationData.url ? `Extracted from: ${conversationData.url}` : '',

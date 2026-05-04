@@ -164,17 +164,7 @@
       if (!['http:', 'https:'].includes(url.protocol)) return '';
 
       const blockedHosts = [
-        'www.kimi.com',
-        'www.qianwen.com',
-        'yiyan.baidu.com',
-        'chatglm.cn',
-        'www.doubao.com',
-        'yuanbao.tencent.com',
-        'xinghuo.xfyun.cn',
-        'metaso.cn',
-        'www.n.cn',
-        'n.cn',
-        'www.tiangong.cn'
+        'www.doubao.com'
       ];
       const hostname = url.hostname.replace(/^www\./, '');
 
