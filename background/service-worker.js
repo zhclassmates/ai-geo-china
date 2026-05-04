@@ -542,12 +542,14 @@ function filterStrictDoubaoCitations(payload = {}) {
   if (payload.provider !== 'doubao') return citations;
 
   const answerMessageId = payload.rawEvidence?.answerMessageId || '';
+  const runConversationId = String(payload.rawEvidence?.conversationId || '');
 
   return citations.filter(citation => {
     if (!citation?.url) return false;
     if (citation.evidenceType !== 'network_search_result') return false;
     if (citation.sourcePanel !== 'doubao_same_message_search_result') return false;
-    if (answerMessageId && citation.messageId && citation.messageId !== answerMessageId) return false;
+    if (!answerMessageId || citation.messageId !== answerMessageId) return false;
+    if (!runConversationId || String(citation.conversationId || '') !== runConversationId) return false;
     return !isPlatformAssetUrl(citation.url);
   });
 }

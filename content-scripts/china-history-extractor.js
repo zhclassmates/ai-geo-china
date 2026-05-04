@@ -318,6 +318,25 @@
     return match?.[1] || '';
   }
 
+  function assertCurrentDoubaoRun(run) {
+    const currentConversationId = getCurrentDoubaoConversationId();
+    const runConversationId = String(run?.rawEvidence?.conversationId || '');
+
+    if (!currentConversationId) {
+      throw new Error('无法识别当前豆包 conversation_id');
+    }
+
+    if (!runConversationId) {
+      throw new Error('当前保存结果没有 conversation_id，禁止导出，避免串台');
+    }
+
+    if (runConversationId !== String(currentConversationId)) {
+      throw new Error(
+        `会话不匹配，禁止导出：当前页面=${currentConversationId}，保存结果=${runConversationId}`
+      );
+    }
+  }
+
   function responseTextContainsConversationId(text, conversationId) {
     if (!conversationId || !text) return false;
 
@@ -347,10 +366,18 @@
 
     return doubaoNetworkResponses.filter(response => {
       if (!hasDoubaoCitationSignal(response)) return false;
+      if (!currentConversationId) return false;
 
       const capturedAt = Number(response?.capturedAt || 0);
       if (!capturedAt) return false;
       if (response.provider && response.provider !== 'doubao') return false;
+
+      if (
+        response.conversationId !== currentConversationId &&
+        !responseTextContainsConversationId(response.text, currentConversationId)
+      ) {
+        return false;
+      }
 
       if (runContext?.runId) {
         if (capturedAt < start || capturedAt > end) return false;
@@ -359,12 +386,7 @@
         return true;
       }
 
-      if (currentConversationId) {
-        return response.conversationId === currentConversationId ||
-          responseTextContainsConversationId(response.text, currentConversationId);
-      }
-
-      return false;
+      return true;
     });
   }
 
@@ -932,9 +954,10 @@
     if (citation.sourcePanel !== 'doubao_same_message_search_result') return false;
 
     const answerMessageId = run?.rawEvidence?.answerMessageId || '';
-    if (answerMessageId && citation.messageId && citation.messageId !== answerMessageId) {
-      return false;
-    }
+    if (!answerMessageId || citation.messageId !== answerMessageId) return false;
+
+    const runConversationId = String(run?.rawEvidence?.conversationId || '');
+    if (!runConversationId || String(citation.conversationId || '') !== runConversationId) return false;
 
     return true;
   }
@@ -1274,11 +1297,7 @@
     const currentMessages = getCurrentDoubaoConversationMessagesFromRouterData(routerData);
     if (currentMessages.length > 0) return currentMessages;
 
-    const chatLayout = routerData?.loaderData?.chat_layout?.chat_layout ||
-      routerData?.loaderData?.chat_layout;
-    const cells = chatLayout?.trimmedChainRecentConvCells || [];
-
-    return cells.flatMap(cell => cell?.conversation?.messages || []);
+    return [];
   }
 
   function getDoubaoConversationRecordsFromRouterData(routerData) {
@@ -1304,7 +1323,7 @@
     const currentConversationId = getCurrentDoubaoConversationId();
     const records = getDoubaoConversationRecordsFromRouterData(routerData);
     if (!currentConversationId) {
-      return records[0]?.messages || [];
+      return [];
     }
 
     const currentRecord = records.find(record => {
@@ -1323,6 +1342,62 @@
     });
 
     return currentRecord?.messages || [];
+  }
+
+  function collectDoubaoMessagesFromNetwork() {
+    const currentConversationId = getCurrentDoubaoConversationId();
+    const messageMap = new Map();
+
+    if (!currentConversationId) {
+      return [];
+    }
+
+    for (const response of doubaoNetworkResponses) {
+      const objects = parsePossibleJsonObjectsFromText(response.text || '');
+
+      for (const object of objects) {
+        walkObject(object, node => {
+          if (!Array.isArray(node.messages)) return;
+
+          for (const message of node.messages) {
+            if (!message?.message_id) continue;
+
+            const messageConversationId = String(message.conversation_id || '');
+            if (messageConversationId !== String(currentConversationId)) {
+              continue;
+            }
+
+            messageMap.set(message.message_id, {
+              ...message,
+              __networkUrl: response.url,
+              __capturedAt: response.capturedAt
+            });
+          }
+        });
+      }
+    }
+
+    return Array.from(messageMap.values());
+  }
+
+  function getDoubaoMessageTimestamp(message) {
+    return Number(
+      message?.create_time ||
+      message?.created_at ||
+      message?.update_time ||
+      message?.updated_at ||
+      message?.__capturedAt ||
+      0
+    );
+  }
+
+  function sortDoubaoMessages(messages) {
+    return [...messages].sort((left, right) => {
+      const timeDiff = getDoubaoMessageTimestamp(left) - getDoubaoMessageTimestamp(right);
+      if (timeDiff !== 0) return timeDiff;
+
+      return String(left?.message_id || '').localeCompare(String(right?.message_id || ''));
+    });
   }
 
   function getDoubaoConversationNameFromRouterData(routerData) {
@@ -1370,6 +1445,19 @@
       .trim();
   }
 
+  function getDoubaoMessageBlocks(message) {
+    return Array.isArray(message?.content_block) ? message.content_block : [];
+  }
+
+  function getTextFromDoubaoBlocks(blocks) {
+    return (Array.isArray(blocks) ? blocks : [])
+      .filter(block => Number(block?.block_type) === 10000)
+      .map(block => block?.content?.text_block?.text || '')
+      .filter(Boolean)
+      .join('\n\n')
+      .trim();
+  }
+
   function cleanDoubaoTitle(title = '') {
     const value = String(title || '').trim();
     if (!value || value === '{}') return '';
@@ -1391,10 +1479,9 @@
     const citations = [];
 
     blocks.forEach(block => {
-      if (Number(block?.block_type) !== 10025) return;
-
       const searchBlock = block?.content?.search_query_result_block;
       const results = Array.isArray(searchBlock?.results) ? searchBlock.results : [];
+      if (results.length === 0) return;
 
       results.forEach(result => {
         const citation = normalizeDoubaoTextCard(result?.text_card, citations.length + 1, message);
@@ -1406,6 +1493,10 @@
     });
 
     return citations;
+  }
+
+  function extractCitationsFromAssistantMessage(message) {
+    return mergeDoubaoCitations(extractDoubaoSearchCitationsFromMessage(message));
   }
 
   function extractMediaSourcesFromAssistantMessage(message) {
@@ -1471,6 +1562,93 @@
     return [...messages.slice(0, index)]
       .reverse()
       .find(message => Number(message?.user_type) === 1);
+  }
+
+  function extractDoubaoConversationAtomically(provider) {
+    const currentConversationId = getCurrentDoubaoConversationId();
+    const messages = sortDoubaoMessages(collectDoubaoMessagesFromNetwork());
+
+    if (!currentConversationId) {
+      throw new Error('无法识别当前豆包会话 ID');
+    }
+
+    if (messages.length === 0) {
+      throw new Error(
+        `没有捕获到当前豆包会话 ${currentConversationId} 的网络消息。请刷新豆包页面，等回答和参考资料加载完成后再保存。`
+      );
+    }
+
+    const assistantMessages = messages.filter(message => {
+      if (String(message.conversation_id) !== String(currentConversationId)) {
+        return false;
+      }
+
+      if (Number(message.user_type) !== 2) {
+        return false;
+      }
+
+      const blocks = getDoubaoMessageBlocks(message);
+      const answerText = getTextFromDoubaoBlocks(blocks);
+
+      return Boolean(answerText);
+    });
+
+    const assistantMessage = assistantMessages.at(-1);
+
+    if (!assistantMessage) {
+      throw new Error(`当前会话 ${currentConversationId} 没有找到豆包回答`);
+    }
+
+    const userMessage = findUserMessageBefore(messages, assistantMessage);
+    const answerBlocks = getDoubaoMessageBlocks(assistantMessage);
+    const queryBlocks = getDoubaoMessageBlocks(userMessage);
+    const query = getTextFromDoubaoBlocks(queryBlocks);
+    const answerText = getTextFromDoubaoBlocks(answerBlocks);
+    const citations = extractCitationsFromAssistantMessage(assistantMessage);
+    const runContext = getRunContextForQuery(query);
+
+    if (!query) {
+      throw new Error(`当前会话 ${currentConversationId} 没有找到用户问题，禁止导出，避免文件名串台`);
+    }
+
+    const run = {
+      type: 'geo_run',
+      runId: runContext?.runId || '',
+      promptHash: runContext?.promptHash || hashPrompt(query),
+      title: `豆包审计 - ${query || document.title || '未命名问题'}`,
+      content: `${query ? `User: ${query}\n\n` : ''}Assistant:\n${answerText}\n\n### Sources\n${citations.map((source, index) => `${index + 1}. [${source.title || source.domain}](${source.url})`).join('\n')}`,
+      messages: [
+        ...(query ? [{ role: 'user', content: query }] : []),
+        { role: 'assistant', content: answerText, sources: citations }
+      ],
+      provider: provider.id,
+      providerName: provider.name,
+      query,
+      actualQuery: query,
+      product: query,
+      answerText,
+      answerMarkdown: answerText,
+      citations,
+      timestamp: Date.now(),
+      url: window.location.href,
+      rawEvidence: {
+        extractionStrategy: 'doubao_same_message_network',
+        userQuestion: query,
+        conversationId: currentConversationId,
+        userMessageId: userMessage?.message_id || '',
+        answerMessageId: assistantMessage.message_id || '',
+        citationCount: citations.length,
+        networkUrl: assistantMessage.__networkUrl || '',
+        capturedAt: assistantMessage.__capturedAt || '',
+        runId: runContext?.runId || '',
+        promptHash: runContext?.promptHash || hashPrompt(query),
+        runStartedAt: runContext?.startedAt || null,
+        networkResponseCount: doubaoNetworkResponses.length
+      }
+    };
+
+    assertCurrentDoubaoRun(run);
+    return run;
   }
 
   function extractDoubaoConversationFromRouterData(provider) {
@@ -1564,24 +1742,7 @@
 
   function extractConversation(provider) {
     if (provider.id === 'doubao') {
-      const doubaoConversation = extractDoubaoConversationFromRouterData(provider);
-
-      if (doubaoConversation && (doubaoConversation.answerText || doubaoConversation.citations.length > 0)) {
-        const runContext = getRunContextForQuery(doubaoConversation.query);
-        const finishedAt = Date.now();
-        doubaoConversation.rawEvidence.networkResponseCount = doubaoNetworkResponses.length;
-        Object.assign(
-          doubaoConversation.rawEvidence,
-          getDoubaoNetworkDebugFields(
-            runContext,
-            finishedAt,
-            []
-          )
-        );
-        return doubaoConversation;
-      }
-
-      throw new Error('No current Doubao assistant message found in router data');
+      return extractDoubaoConversationAtomically(provider);
     }
 
     const answerRoot = extractAnswerRoot();
@@ -1772,6 +1933,7 @@
   }
 
   function downloadLocalFiles(conversation) {
+    assertCurrentDoubaoRun(conversation);
     const baseName = buildDownloadBaseName(conversation);
     downloadTextFile(`${baseName}.md`, buildMarkdownFile(conversation), 'text/markdown;charset=utf-8');
     downloadTextFile(`${baseName}.csv`, buildCsvFile(conversation), 'text/csv;charset=utf-8');
@@ -1818,13 +1980,13 @@
       run?.actualQuery ||
       run?.query ||
       run?.rawEvidence?.userQuestion ||
-      run?.rawEvidence?.conversationName ||
       getCleanDoubaoPageTitle() ||
       'doubao-run'
     );
   }
 
   function buildDoubaoCsvFilename(run) {
+    assertCurrentDoubaoRun(run);
     const query = safeFilename(getExportQuery(run));
     return `doubao-${formatLocalDateForFilename(new Date(run?.timestamp || Date.now()))}-${query}.csv`;
   }
@@ -1870,6 +2032,7 @@
   }
 
   function buildCsvFile(conversation) {
+    assertCurrentDoubaoRun(conversation);
     const headers = [
       'saved_at',
       'provider',
@@ -1899,6 +2062,7 @@
   }
 
   function buildCitationCsvRows(run) {
+    assertCurrentDoubaoRun(run);
     const citations = (run.citations || [])
       .filter(citation => isStrictCitation(citation, run));
 
